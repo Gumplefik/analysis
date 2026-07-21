@@ -245,7 +245,75 @@ export function createRoot(
       transitionCallbacks = options.unstable_transitionCallbacks;
     }
   }
-  // 创建fiber root
+  /*
+   * 创建内部 FiberRoot。这里的 root 不是最终返回给用户的 ReactDOMRoot；
+   * ReactDOMRoot 只是通过 _internalRoot 持有它。FiberRoot 是整个应用的
+   * 调度中心，也是已提交 Fiber 树、待处理更新、缓存及错误处理器的容器。
+   *
+   * FiberRoot 的主要属性（部分属性只在对应 Feature Flag 开启时存在）：
+   *
+   * 一、根节点和宿主容器
+   * - tag：Root 类型，如 ConcurrentRoot。
+   * - containerInfo：React 树挂载的 DOM Element、Document 或 DocumentFragment。
+   * - pendingChildren：持久化渲染器暂存的待提交子节点；DOM mutation 模式通常不用。
+   * - current：当前已经提交的 HostRoot Fiber，也是整棵 current Fiber 树的入口。
+   * - context：当前根 Context，主要供旧版 renderSubtreeIntoContainer 使用。
+   * - pendingContext：下一次提交后需要替换 context 的待生效 Context。
+   *
+   * 二、Root 调度状态
+   * - next：把所有存在待处理工作的 Root 串成单向链表。
+   * - callbackNode：Scheduler 为该 Root 创建的当前任务节点，可用于取消或复用任务。
+   * - callbackPriority：callbackNode 对应的 Lane 优先级，用于判断是否需要重新调度。
+   * - timeoutHandle：延迟提交或 Suspense fallback 使用的定时器句柄。
+   * - cancelPendingCommit：取消尚未执行的 Commit；没有待提交任务时为 null。
+   * - pingCache：记录 Wakeable/Thenable 与监听它的 Lane，避免重复注册 ping 回调。
+   *
+   * 三、Lane 和更新状态
+   * - pendingLanes：Root 上所有尚未完成的更新 Lane。
+   * - suspendedLanes：因为 Suspense 等原因被阻塞的 Lane。
+   * - pingedLanes：异步依赖已经完成、可以重新尝试的 suspended Lane。
+   * - warmLanes：本轮已尝试过的 suspended Lane，帮助选择下一次重试策略。
+   * - expiredLanes：等待过久、已过期并需要同步处理的 Lane。
+   * - expirationTimes：每个 Lane 的过期时间。
+   * - hiddenUpdates：隐藏的 Offscreen/Activity 子树中按 Lane 保存的更新。
+   * - errorRecoveryDisabledLanes：禁止再次尝试并发错误恢复的 Lane。
+   * - shellSuspendCounter：Root shell 连续挂起次数，用于控制错误恢复策略。
+   * - entangledLanes：必须作为一组一起处理的 Lane。
+   * - entanglements：记录每个 Lane 与哪些其他 Lane 相互绑定。
+   * - indicatorLanes：可能需要默认 Transition loading indicator 的 Lane。
+   *
+   * 四、Render Cache
+   * - pooledCache：Render 期间供新挂载 Cache/Suspense/Offscreen 边界临时共享的 Cache。
+   * - pooledCacheLanes：仍然依赖 pooledCache 的 Lane；归零后可释放 pooledCache。
+   *
+   * 五、标识符、表单和错误处理
+   * - identifierPrefix：useId、SSR/Flight ID 等 React 自动标识符的 Root 级前缀。
+   * - formState：SSR hydration 时需要恢复的 React Form 状态。
+   * - onUncaughtError：处理未被 Error Boundary 捕获的错误。
+   * - onCaughtError：处理已经被 Error Boundary 捕获的错误。
+   * - onRecoverableError：处理 hydration 等场景中 React 能自动恢复的错误。
+   * - onDefaultTransitionIndicator：启动默认 Transition 加载指示器，并可返回清理函数。
+   * - pendingIndicator：当前默认 Transition 指示器的清理函数。
+   *
+   * 六、可选能力
+   * - hydrationCallbacks：Suspense/Activity hydration 完成或删除时的回调。
+   * - transitionTypes：当前 View Transition 的类型集合。
+   * - pendingGestures：等待执行的 Gesture Transition。
+   * - gestureClone：Gesture Transition 使用的宿主节点副本。
+   * - transitionCallbacks：Transition tracing 的开始、进度和完成回调。
+   * - transitionLanes：每个 Lane 对应的、正在被追踪的 Transition 集合。
+   * - incompleteTransitions：尚未完成的 Transition 及其 pending boundary 信息。
+   *
+   * 七、Profiler 和开发调试
+   * - effectDuration：本次 Commit 中 layout effect 的累计耗时。
+   * - passiveEffectDuration：本次 Commit 中 passive effect 的累计耗时。
+   * - memoizedUpdaters：DevTools 用来展示本次更新来源的 Fiber 集合。
+   * - pendingUpdatersLaneMap：按 Lane 保存触发更新的 Fiber，供 DevTools 使用。
+   * - _debugRootType：开发环境下标识 createRoot、hydrateRoot 等 Root 创建方式。
+   *
+   * 注意：当前 React 节点、hydration 标记和 Root 正式 Cache 不直接放在 FiberRoot 上，
+   * 而是保存在 root.current.memoizedState 的 element、isDehydrated、cache 字段中。
+   */
   const root = createContainer(
     container,
     ConcurrentRoot,
