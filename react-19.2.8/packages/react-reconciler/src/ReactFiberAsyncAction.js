@@ -194,6 +194,7 @@ export function peekEntangledActionThenable(): Thenable<void> | null {
   return currentEntangledActionThenable;
 }
 
+// 注册过滤函数
 export function registerDefaultIndicator(
   onDefaultTransitionIndicator: () => void | (() => void),
 ): void {

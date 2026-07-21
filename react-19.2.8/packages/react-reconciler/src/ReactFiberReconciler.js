@@ -260,6 +260,7 @@ export function createContainer(
 ): OpaqueRoot {
   const hydrate = false;
   const initialChildren = null;
+  // 创建fiber root
   const root = createFiberRoot(
     containerInfo,
     tag,
@@ -275,6 +276,7 @@ export function createContainer(
     onDefaultTransitionIndicator,
     transitionCallbacks,
   );
+  // 注册过渡器
   registerDefaultIndicator(onDefaultTransitionIndicator);
   return root;
 }
@@ -351,7 +353,9 @@ export function createHydrationContainer(
 }
 
 export function updateContainer(
+  // react节点
   element: ReactNodeList,
+  // fiber root节点
   container: OpaqueRoot,
   parentComponent: ?component(...props: any),
   callback: ?Function,

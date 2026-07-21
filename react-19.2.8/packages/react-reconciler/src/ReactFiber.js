@@ -235,6 +235,7 @@ function createFiberImplObject(
   key: ReactKey,
   mode: TypeOfMode,
 ): Fiber {
+  // 创建fiber对象
   const fiber: Fiber = {
     // Instance
     // tag, key - defined at the bottom as dynamic properties
@@ -273,7 +274,7 @@ function createFiberImplObject(
     pendingProps,
     mode,
   };
-
+  // 性能监测标志
   if (enableProfilerTimer) {
     fiber.actualDuration = -0;
     fiber.actualStartTime = -1.1;
@@ -526,6 +527,7 @@ export function resetWorkInProgress(
   return workInProgress;
 }
 
+// 其实就是创建一个fiber对象
 export function createHostRootFiber(
   tag: RootTag,
   isStrictMode: boolean,

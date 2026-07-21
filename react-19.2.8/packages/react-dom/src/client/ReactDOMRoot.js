@@ -100,10 +100,12 @@ import {ConcurrentRoot} from 'react-reconciler/src/ReactRootTags';
 
 // $FlowFixMe[missing-this-annot]
 function ReactDOMRoot(internalRoot: FiberRoot) {
+  // 保存fiberroot 
   this._internalRoot = internalRoot;
 }
 
 // $FlowFixMe[prop-missing] found when upgrading Flow
+// render实例化函数
 ReactDOMHydrationRoot.prototype.render = ReactDOMRoot.prototype.render =
   // $FlowFixMe[missing-this-annot]
   function (children: ReactNodeList): void {
@@ -132,9 +134,11 @@ ReactDOMHydrationRoot.prototype.render = ReactDOMRoot.prototype.render =
         );
       }
     }
+    // 渲染节点
     updateContainer(children, root, null, null);
   };
 
+// 卸载节点函数实现
 // $FlowFixMe[prop-missing] found when upgrading Flow
 ReactDOMHydrationRoot.prototype.unmount = ReactDOMRoot.prototype.unmount =
   // $FlowFixMe[missing-this-annot]
@@ -162,8 +166,10 @@ ReactDOMHydrationRoot.prototype.unmount = ReactDOMRoot.prototype.unmount =
           );
         }
       }
+      // 同步更新dom
       updateContainerSync(null, root, null, null);
       flushSyncWork();
+      // 移除fiberroot的引用
       unmarkContainerAsRoot(container);
     }
   };
@@ -172,6 +178,7 @@ export function createRoot(
   container: Element | Document | DocumentFragment,
   options?: CreateRootOptions,
 ): RootType {
+  // 检查是否是有效dom元素或者容器
   if (!isValidContainer(container)) {
     throw new Error('Target container is not a DOM element.');
   }
@@ -181,9 +188,11 @@ export function createRoot(
   const concurrentUpdatesByDefaultOverride = false;
   let isStrictMode = false;
   let identifierPrefix = '';
+  // 错误捕获处理器
   let onUncaughtError = defaultOnUncaughtError;
   let onCaughtError = defaultOnCaughtError;
   let onRecoverableError = defaultOnRecoverableError;
+  // 处理过滤和拦截navigate
   let onDefaultTransitionIndicator = defaultOnDefaultTransitionIndicator;
   let transitionCallbacks = null;
 
@@ -214,6 +223,7 @@ export function createRoot(
     if (options.unstable_strictMode === true) {
       isStrictMode = true;
     }
+    // 处理多个root的冲突问题
     if (options.identifierPrefix !== undefined) {
       identifierPrefix = options.identifierPrefix;
     }
@@ -235,7 +245,7 @@ export function createRoot(
       transitionCallbacks = options.unstable_transitionCallbacks;
     }
   }
-
+  // 创建fiber root
   const root = createContainer(
     container,
     ConcurrentRoot,
@@ -249,15 +259,18 @@ export function createRoot(
     onDefaultTransitionIndicator,
     transitionCallbacks,
   );
+  // 讲渲染树挂载保存引用到容器上
   markContainerAsRoot(root.current, container);
-
+  // 处理掉注释节点
   const rootContainerElement: Document | Element | DocumentFragment =
     !disableCommentsAsDOMContainers && container.nodeType === COMMENT_NODE
       ? (container.parentNode as any)
       : container;
+  // 监听绑定所有事件
   listenToAllSupportedEvents(rootContainerElement);
 
   // $FlowFixMe[invalid-constructor] Flow no longer supports calling new on functions
+  // 实例化react root 保存root即fiber root引用 后面在render里用riber root渲染
   return new ReactDOMRoot(root);
 }
 

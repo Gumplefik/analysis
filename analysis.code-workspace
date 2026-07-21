@@ -1,0 +1,12 @@
+{
+  "folders": [
+    {
+      "name": "React",
+      "path": "./react-19.2.8"
+    },
+    {
+      "name": "TypeScript Go",
+      "path": "./typescript-7.0"
+    }
+  ]
+}

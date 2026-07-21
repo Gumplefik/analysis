@@ -47,6 +47,8 @@ export type RootState = {
   cache: Cache,
 };
 
+
+// 对fiberroot节点进行初始化
 function FiberRootNode(
   this: $FlowFixMe,
   containerInfo: any,
@@ -186,6 +188,7 @@ export function createFiberRoot(
   transitionCallbacks: null | TransitionTracingCallbacks,
 ): FiberRoot {
   // $FlowFixMe[invalid-constructor] Flow no longer supports calling new on functions
+  // 创建fiber root节点
   const root: FiberRoot = new FiberRootNode(
     containerInfo,
     tag,
@@ -197,21 +200,25 @@ export function createFiberRoot(
     onDefaultTransitionIndicator,
     formState,
   ) as any;
+  // 异步加载模块回调
   if (enableSuspenseCallback) {
     root.hydrationCallbacks = hydrationCallbacks;
   }
-
+  // 过渡回调
   if (enableTransitionTracing) {
     root.transitionCallbacks = transitionCallbacks;
   }
 
   // Cyclic construction. This cheats the type system right now because
   // stateNode is any.
+  // 创建个普通fiber节点
   const uninitializedFiber = createHostRootFiber(tag, isStrictMode);
+  // 保存当前fiber节点
   root.current = uninitializedFiber;
   uninitializedFiber.stateNode = root;
-
+  // 创建缓存兑现
   const initialCache = createCache();
+  // 计数加一
   retainCache(initialCache);
 
   // The pooledCache is a fresh cache instance that is used temporarily
@@ -221,6 +228,7 @@ export function createFiberRoot(
   // component if rendering suspends. Because the lifetime of the pooled
   // cache is distinct from the main memoizedState.cache, it must be
   // retained separately.
+  // initialCache在这里被保存到了两个地方 标记有两个实例引用缓存
   root.pooledCache = initialCache;
   retainCache(initialCache);
   const initialState: RootState = {
@@ -228,8 +236,9 @@ export function createFiberRoot(
     isDehydrated: hydrate,
     cache: initialCache,
   };
+  // 保存react节点数据
   uninitializedFiber.memoizedState = initialState;
-
+  // 创建更新队列
   initializeUpdateQueue(uninitializedFiber);
 
   return root;

@@ -7,6 +7,14 @@
  * @flow
  */
 
+// Transition 开始
+// → React 判断该 Transition 需要 loading indicator
+// → 调用 defaultOnDefaultTransitionIndicator()
+// → 利用浏览器 Navigation API 制造一个 pending navigation
+// → 浏览器显示默认加载指示器
+// → Transition 提交完成
+// → 调用返回的 cleanup，结束指示器
+
 export function defaultOnDefaultTransitionIndicator(): void | (() => void) {
   if (typeof navigation !== 'object') {
     // If the Navigation API is not available, then this is a noop.
@@ -20,6 +28,7 @@ export function defaultOnDefaultTransitionIndicator(): void | (() => void) {
     if (event.canIntercept && event.info === 'react-transition') {
       event.intercept({
         handler() {
+          // 保存拦截函数回调引用
           return new Promise(resolve => (pendingResolve = resolve));
         },
         focusReset: 'manual',
