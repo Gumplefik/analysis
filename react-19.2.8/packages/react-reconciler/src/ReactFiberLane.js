@@ -40,26 +40,44 @@ import {LegacyRoot} from './ReactRootTags';
 
 export const TotalLanes = 31;
 
+// Lane 使用 31 位 bitmask 表示工作通道。通常越靠右（低位）的 Lane 优先级越高。
+// Lane 表示一个通道，Lanes 表示若干通道按位或之后的集合。
+// Hydration Lane 与普通 Lane 成对出现：它们表示以相应紧急程度恢复服务端 HTML。
+
+// 空集合/无通道。两者的值相同，但类型语义不同：NoLanes 用于集合，NoLane 用于单值。
 export const NoLanes: Lanes = /*                        */ 0b0000000000000000000000000000000;
 export const NoLane: Lane = /*                          */ 0b0000000000000000000000000000000;
 
+// 最高优先级的 hydration 工作，例如必须立即恢复才能响应同步交互的服务端内容。
 export const SyncHydrationLane: Lane = /*               */ 0b0000000000000000000000000000001;
+// 同步更新通道，用于离散事件、flushSync 和 Legacy Root 更新等必须立即完成的工作。
 export const SyncLane: Lane = /*                        */ 0b0000000000000000000000000000010;
+// SyncLane 在 LaneMap 数组中的下标。
 export const SyncLaneIndex: number = 1;
 
+// 连续输入优先级的 hydration，例如目标边界需要恢复以响应连续交互。
 export const InputContinuousHydrationLane: Lane = /*    */ 0b0000000000000000000000000000100;
+// 连续输入事件更新，例如 pointermove、mousemove、scroll 等可连续产生的交互。
 export const InputContinuousLane: Lane = /*             */ 0b0000000000000000000000000001000;
 
+// 普通默认优先级的 hydration，不要求像用户输入那样立即完成。
 export const DefaultHydrationLane: Lane = /*            */ 0b0000000000000000000000000010000;
+// 普通更新通道；没有更明确事件优先级的更新通常会进入这里。
 export const DefaultLane: Lane = /*                     */ 0b0000000000000000000000000100000;
 
+// 一组在强制同步刷新等场景中会被一起挑选的更新 Lane；它是集合而非新的独立 Lane。
 export const SyncUpdateLanes: Lane =
   SyncLane | InputContinuousLane | DefaultLane;
 
+// 实验性的手势过渡通道，用于 startGestureTransition 驱动的交互式手势更新。
 export const GestureLane: Lane = /*                     */ 0b0000000000000000000000001000000;
 
+// Transition 优先级的 hydration，用于过渡渲染所依赖的服务端内容恢复。
 const TransitionHydrationLane: Lane = /*                */ 0b0000000000000000000000010000000;
+// 全部 Transition Lane 的集合掩码，本身不是一个可单独分配的 Lane。
 const TransitionLanes: Lanes = /*                       */ 0b0000000001111111111111100000000;
+// TransitionLane1-10：普通 startTransition/异步 Action 更新使用的轮转槽位。
+// 它们具有同一优先级语义；使用多个 bit 是为了区分、批处理和纠缠不同的 Transition。
 const TransitionLane1: Lane = /*                        */ 0b0000000000000000000000100000000;
 const TransitionLane2: Lane = /*                        */ 0b0000000000000000000001000000000;
 const TransitionLane3: Lane = /*                        */ 0b0000000000000000000010000000000;
@@ -70,13 +88,17 @@ const TransitionLane7: Lane = /*                        */ 0b0000000000000000100
 const TransitionLane8: Lane = /*                        */ 0b0000000000000001000000000000000;
 const TransitionLane9: Lane = /*                        */ 0b0000000000000010000000000000000;
 const TransitionLane10: Lane = /*                       */ 0b0000000000000100000000000000000;
+// TransitionLane11-14：Render 派生出的 deferred 工作（如 useDeferredValue）使用的轮转槽位。
+// 它们与 1-10 同属 Transition 大类，但单独保留可避免 deferred 工作与原更新混在一起。
 const TransitionLane11: Lane = /*                       */ 0b0000000000001000000000000000000;
 const TransitionLane12: Lane = /*                       */ 0b0000000000010000000000000000000;
 const TransitionLane13: Lane = /*                       */ 0b0000000000100000000000000000000;
 const TransitionLane14: Lane = /*                       */ 0b0000000001000000000000000000000;
 
+// 需要一个任意 Transition Lane 作为代表值时使用；不表示额外的新优先级。
 export const SomeTransitionLane: Lane = TransitionLane1;
 
+// 可由外部更新直接申请的普通 Transition Lane 集合。
 const TransitionUpdateLanes =
   TransitionLane1 |
   TransitionLane2 |
@@ -88,32 +110,45 @@ const TransitionUpdateLanes =
   TransitionLane8 |
   TransitionLane9 |
   TransitionLane10;
+// Render 过程中生成的 deferred Transition Lane 集合。
 const TransitionDeferredLanes =
   TransitionLane11 | TransitionLane12 | TransitionLane13 | TransitionLane14;
 
+// 全部 Suspense 重试 Lane 的集合掩码。
 const RetryLanes: Lanes = /*                            */ 0b0000011110000000000000000000000;
+// RetryLane1-4：Suspense/异步依赖 resolve 后重新尝试边界使用的轮转槽位。
+// 四个 Lane 语义和优先级相同，多个槽位用于区分不同批次的重试工作。
 const RetryLane1: Lane = /*                             */ 0b0000000010000000000000000000000;
 const RetryLane2: Lane = /*                             */ 0b0000000100000000000000000000000;
 const RetryLane3: Lane = /*                             */ 0b0000001000000000000000000000000;
 const RetryLane4: Lane = /*                             */ 0b0000010000000000000000000000000;
 
+// 需要一个任意 Retry Lane 作为代表值时使用；不表示额外的新优先级。
 export const SomeRetryLane: Lane = RetryLane1;
 
+// 选择性 hydration：优先恢复用户交互命中的某个 dehydrated Suspense 边界。
 export const SelectiveHydrationLane: Lane = /*          */ 0b0000100000000000000000000000000;
 
+// 所有非 Idle 组 Lane 的集合，用于保证普通工作完成前不选择 Idle 工作。
 const NonIdleLanes: Lanes = /*                          */ 0b0000111111111111111111111111111;
 
+// 空闲优先级的 hydration，只在没有更紧急工作时恢复服务端内容。
 export const IdleHydrationLane: Lane = /*               */ 0b0001000000000000000000000000000;
+// 空闲更新通道，只在没有非 Idle 工作时处理，并且不会过期。
 export const IdleLane: Lane = /*                        */ 0b0010000000000000000000000000000;
 
+// 隐藏 Offscreen/Activity 子树的预渲染或预热工作；也会作为 bit 标记隐藏更新。
 export const OffscreenLane: Lane = /*                   */ 0b0100000000000000000000000000000;
+// 派生 deferred 工作的辅助标记，始终与真正执行该工作的 Lane 纠缠，不单独调度。
 export const DeferredLane: Lane = /*                    */ 0b1000000000000000000000000000000;
 
 // Any lane that might schedule an update. This is used to detect infinite
 // update loops, so it doesn't include hydration lanes or retries.
+// 能由 setState 等更新直接产生的 Lane 集合，用于检测无限更新循环。
 export const UpdateLanes: Lanes =
   SyncLane | InputContinuousLane | DefaultLane | TransitionUpdateLanes;
 
+// 所有 hydration 专用 Lane 的集合。
 export const HydrationLanes =
   SyncHydrationLane |
   InputContinuousHydrationLane |
