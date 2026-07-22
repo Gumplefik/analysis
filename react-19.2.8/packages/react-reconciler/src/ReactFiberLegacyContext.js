@@ -172,6 +172,7 @@ function processChildContext(
   if (disableLegacyContext) {
     return parentContext;
   } else {
+    // 获取类实例
     const instance = fiber.stateNode;
     const childContextTypes = type.childContextTypes;
 
@@ -194,8 +195,25 @@ function processChildContext(
       }
       return parentContext;
     }
+    // 调用class的方法获取context
+    // class Parent extends React.Component {
+    //   getChildContext() {
+    //     return {
+    //       theme: 'dark',
+    //     };
+    //   }
 
+    //   render() {
+    //     return <Child />;
+    //   }
+    // }
+
+    // Parent.childContextTypes = {
+    //   theme: PropTypes.string,
+    // };
+    
     const childContext = instance.getChildContext();
+    // 检查字段注册
     for (const contextKey in childContext) {
       if (!(contextKey in childContextTypes)) {
         throw new Error(
@@ -205,7 +223,7 @@ function processChildContext(
         );
       }
     }
-
+    // 合并属性
     return {...parentContext, ...childContext};
   }
 }
@@ -278,6 +296,7 @@ function invalidateContextProvider(
   }
 }
 
+// 递归获取父级的context
 function findCurrentUnmaskedContext(fiber: Fiber): Object {
   if (disableLegacyContext) {
     return emptyContextObject;

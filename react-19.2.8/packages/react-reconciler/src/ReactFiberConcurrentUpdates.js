@@ -181,6 +181,7 @@ export function unsafe_markUpdateLaneFromFiberToRoot(
   // undefined behavior and we can change it if we need to; it just so happens
   // that, at the time of this writing, there's an internal product test that
   // happens to rely on this.
+  // 获取hostRoot
   const root = getRootForUpdatedFiber(sourceFiber);
   markUpdateLaneFromFiberToRoot(sourceFiber, null, lane);
   return root;
@@ -192,9 +193,12 @@ function markUpdateLaneFromFiberToRoot(
   lane: Lane,
 ): null | FiberRoot {
   // Update the source fiber's lanes
+  // 检查更新模式
   sourceFiber.lanes = mergeLanes(sourceFiber.lanes, lane);
+  // 获取双缓存节点
   let alternate = sourceFiber.alternate;
   if (alternate !== null) {
+    // 同步更新模式
     alternate.lanes = mergeLanes(alternate.lanes, lane);
   }
   // Walk the parent path to the root and update the child lanes.
@@ -249,6 +253,9 @@ function markUpdateLaneFromFiberToRoot(
   return null;
 }
 
+
+
+// 递归获取到hostRoot
 function getRootForUpdatedFiber(sourceFiber: Fiber): FiberRoot | null {
   // TODO: We will detect and infinite update loop and throw even if this fiber
   // has already unmounted. This isn't really necessary but it happens to be the

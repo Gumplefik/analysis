@@ -827,7 +827,7 @@ export function requestUpdateLane(fiber: Fiber): Lane {
     // the current behavior.
     return pickArbitraryLane(workInProgressRootRenderLanes);
   }
-
+  // 开启过渡
   const transition = requestCurrentTransition();
   if (transition !== null) {
     if (enableGestureTransition) {
@@ -849,7 +849,7 @@ export function requestUpdateLane(fiber: Fiber): Lane {
 
     return requestTransitionLane(transition);
   }
-
+  // 其实就是解析当前的context看优先级是多少
   return eventPriorityToLane(resolveUpdatePriority());
 }
 

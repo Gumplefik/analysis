@@ -220,6 +220,7 @@ export function createUpdate(lane: Lane): Update<mixed> {
   return update;
 }
 
+// 组织update对象顺序 登记记录更新
 export function enqueueUpdate<State>(
   fiber: Fiber,
   update: Update<State>,
@@ -249,18 +250,22 @@ export function enqueueUpdate<State>(
       didWarnUpdateInsideUpdate = true;
     }
   }
-
+  // 检查是否正在渲染过程中
+  // 实际上这个fiber参数根本没用到
   if (isUnsafeClassRenderPhaseUpdate(fiber)) {
     // This is an unsafe render phase update. Add directly to the update
     // queue so we can process it immediately during the current render.
     const pending = sharedQueue.pending;
+    // 初始化和更新两个模式
     if (pending === null) {
       // This is the first update. Create a circular list.
       update.next = update;
     } else {
+      // 调整链表顺序为 pending update pending.next
       update.next = pending.next;
       pending.next = update;
     }
+    // 标记要更新的信息
     sharedQueue.pending = update;
 
     // Update the childLanes even though we're most likely already rendering

@@ -137,18 +137,21 @@ if (__DEV__) {
   didWarnAboutFindNodeInStrictMode = {} as {[string]: boolean};
 }
 
+// 过去context内容
 function getContextForSubtree(
   parentComponent: ?component(...props: any),
 ): Object {
   if (!parentComponent) {
     return emptyContextObject;
   }
-
+  // 获取父节点的fiber
   const fiber = getInstance(parentComponent);
+  // 查询context 用于usecontext
   const parentContext = findCurrentUnmaskedContext(fiber);
-
+  // class类型组件处理方式有所区别
   if (fiber.tag === ClassComponent) {
     const Component = fiber.type;
+    // legacy组件可能是class组件，需要调用getChildContext去获取
     if (isLegacyContextProvider(Component)) {
       return processChildContext(fiber, Component, parentContext);
     }
@@ -361,6 +364,12 @@ export function updateContainer(
   callback: ?Function,
 ): Lane {
   const current = container.current;
+  // 获取更新优先级  或者说是更新模式
+  // SyncLane             // 同步，优先级最高
+  // InputContinuousLane  // 连续输入事件
+  // DefaultLane          // 普通更新
+  // TransitionLane       // 过渡更新
+  // IdleLane             // 空闲更新
   const lane = requestUpdateLane(current);
   updateContainerImpl(
     current,
@@ -409,11 +418,13 @@ function updateContainerImpl(
   if (enableSchedulingProfiler) {
     markRenderScheduled(lane);
   }
-
+  // 获取useContext或者getChileContext的内容
   const context = getContextForSubtree(parentComponent);
+  // 初始化context
   if (container.context === null) {
     container.context = context;
   } else {
+    // 更新context 临时挂在到pending上，表明需要更新
     container.pendingContext = context;
   }
 
@@ -433,12 +444,13 @@ function updateContainerImpl(
       );
     }
   }
-
+  // 创建一个update对象
   const update = createUpdate(lane);
   // Caution: React DevTools currently depends on this property
   // being called "element".
+  // 保存元素传参
   update.payload = {element};
-
+  // 保存回调
   callback = callback === undefined ? null : callback;
   if (callback !== null) {
     if (__DEV__) {
@@ -452,7 +464,7 @@ function updateContainerImpl(
     }
     update.callback = callback;
   }
-
+  
   const root = enqueueUpdate(rootFiber, update, lane);
   if (root !== null) {
     startUpdateTimerByLane(lane, 'root.render()', null);
