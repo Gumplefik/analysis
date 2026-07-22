@@ -251,7 +251,7 @@ export function enqueueUpdate<State>(
     }
   }
   // 检查是否正在渲染过程中
-  // 实际上这个fiber参数根本没用到
+  // 实际上这个fiber参数根本没用到 主要针对几个特殊的钩子函数
   if (isUnsafeClassRenderPhaseUpdate(fiber)) {
     // This is an unsafe render phase update. Add directly to the update
     // queue so we can process it immediately during the current render.
@@ -272,20 +272,25 @@ export function enqueueUpdate<State>(
     // this fiber. This is for backwards compatibility in the case where you
     // update a different component during render phase than the one that is
     // currently renderings (a pattern that is accompanied by a warning).
+    
     return unsafe_markUpdateLaneFromFiberToRoot(fiber, lane);
   } else {
+    // 常规初始化进入的更新模式
     return enqueueConcurrentClassUpdate(fiber, sharedQueue, update, lane);
   }
 }
 
+// 主要处理多个过渡异步并发的问题，即过渡跳转a随后马上过渡跳转b
+// 这个场景合并更新直接显示b
 export function entangleTransitions(root: FiberRoot, fiber: Fiber, lane: Lane) {
   const updateQueue = fiber.updateQueue;
   if (updateQueue === null) {
     // Only occurs if the fiber has been unmounted.
     return;
   }
-
+  // 获取公共任务
   const sharedQueue: SharedQueue<mixed> = (updateQueue as any).shared;
+  // 如果有过渡任务，则更新合并任务
   if (isTransitionLane(lane)) {
     let queueLanes = sharedQueue.lanes;
 
@@ -294,14 +299,17 @@ export function entangleTransitions(root: FiberRoot, fiber: Fiber, lane: Lane) {
     // a superset of the actually pending lanes. In some cases we may entangle
     // more than we need to, but that's OK. In fact it's worse if we *don't*
     // entangle when we should.
+    // 交集获取未完成的任务 或者说清理已完成的任务
     queueLanes = intersectLanes(queueLanes, root.pendingLanes);
 
     // Entangle the new transition lane with the other transition lanes.
+    // 合并任务并更新
     const newQueueLanes = mergeLanes(queueLanes, lane);
     sharedQueue.lanes = newQueueLanes;
     // Even if queue.lanes already include lane, we don't know for certain if
     // the lane finished since the last time we entangled it. So we need to
     // entangle it again, just to be sure.
+    // 更新任务关联信息表
     markRootEntangled(root, newQueueLanes);
   }
 }

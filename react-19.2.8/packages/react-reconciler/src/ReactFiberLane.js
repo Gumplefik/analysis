@@ -808,6 +808,7 @@ export function pickArbitraryLane(lanes: Lanes): Lane {
   return getHighestPriorityLane(lanes);
 }
 
+// clz是看32位整数前面有多少个0
 function pickArbitraryLaneIndex(lanes: Lanes) {
   return 31 - clz32(lanes);
 }
@@ -824,6 +825,8 @@ export function isSubsetOfLanes(set: Lanes, subset: Lanes | Lane): boolean {
   return (set & subset) === subset;
 }
 
+// 合并任务，用于指示有多少种任务要去处理
+// 由于每个lane是二进制，或运算使得其可以多个n个任务类型
 export function mergeLanes(a: Lanes | Lane, b: Lanes | Lane): Lanes {
   return a | b;
 }
@@ -1060,6 +1063,8 @@ function markSpawnedDeferredLane(
     (entangledLanes & UpdateLanes);
 }
 
+// 主要是为了更新映射关联表，对所有任务中的每个任务进行检查，如果新合并进来的有重叠，或者该任务已有
+// 关联信息，则合并进来
 export function markRootEntangled(root: FiberRoot, entangledLanes: Lanes) {
   // In addition to entangling each of the given lanes with each other, we also
   // have to consider _transitive_ entanglements. For each lane that is already
@@ -1072,21 +1077,31 @@ export function markRootEntangled(root: FiberRoot, entangledLanes: Lanes) {
   // If this is hard to grasp, it might help to intentionally break this
   // function and look at the tests that fail in ReactTransition-test.js. Try
   // commenting out one of the conditions below.
-
-  const rootEntangledLanes = (root.entangledLanes |= entangledLanes);
+  // 先按位或然后将返回值赋值
+  // 合并任务列表
+  const rootEntangledLanes = (root.entangledLanes |= entangledLanes); 
+  // 获取任务映射关系
   const entanglements = root.entanglements;
   let lanes = rootEntangledLanes;
+  // 循环所有任务添加映射关系
   while (lanes) {
+    // 获取从左往右第一个任务
     const index = pickArbitraryLaneIndex(lanes);
+    // 将索引转换为二进制值
     const lane = 1 << index;
+    // 重新同步一遍每个任务标记
     if (
       // Is this one of the newly entangled lanes?
+      // 如果是新合并进来的任务
       (lane & entangledLanes) |
       // Is this lane transitively entangled with the newly entangled lanes?
+      // 或者已有映射表中任务关联的其他任务和新合并进来的有重叠的
       (entanglements[index] & entangledLanes)
     ) {
+      // 更新映射表里的关联任务
       entanglements[index] |= entangledLanes;
     }
+    // lane取反再做与运算 目的是移除已执行的任务，即让对应任务的二进制标置为0
     lanes &= ~lane;
   }
 }
@@ -1113,9 +1128,11 @@ export function markHiddenUpdate(
   update: ConcurrentUpdate,
   lane: Lane,
 ) {
+  // 获取在数组中的索引 紧凑数组 节省空间 查找迅速 占据连续内存空间
   const index = laneToIndex(lane);
   const hiddenUpdates = root.hiddenUpdates;
   const hiddenUpdatesForLane = hiddenUpdates[index];
+  // 保存要更新的信息
   if (hiddenUpdatesForLane === null) {
     hiddenUpdates[index] = [update];
   } else {

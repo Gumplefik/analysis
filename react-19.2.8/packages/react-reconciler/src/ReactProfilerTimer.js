@@ -42,6 +42,7 @@ import * as Scheduler from 'scheduler';
 
 const {unstable_now: now} = Scheduler;
 
+// 创建堆栈记录 辅助devtool
 const createTask =
   // eslint-disable-next-line react-internal/no-production-logging
   __DEV__ && console.createTask
@@ -118,6 +119,8 @@ export function startYieldTimer(reason: SuspendedReason) {
   yieldReason = reason;
 }
 
+// 主要用来性能追踪，记录时间
+// 区分手势 阻塞任务 过滤三种类型
 export function startUpdateTimerByLane(
   lane: Lane,
   method: string,

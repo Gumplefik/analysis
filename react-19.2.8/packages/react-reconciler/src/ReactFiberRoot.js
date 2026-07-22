@@ -213,7 +213,7 @@ export function createFiberRoot(
   // stateNode is any.
   // 创建个普通fiber节点
   const uninitializedFiber = createHostRootFiber(tag, isStrictMode);
-  // 保存当前fiber节点
+  // 保存当前fiber节点 互相关联state 和 fiberroot
   root.current = uninitializedFiber;
   uninitializedFiber.stateNode = root;
   // 创建缓存兑现

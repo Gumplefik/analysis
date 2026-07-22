@@ -87,6 +87,7 @@ export function getConcurrentlyUpdatedLanes(): Lanes {
   return concurrentlyUpdatedLanes;
 }
 
+// 对fiber节点标记任务
 function enqueueUpdate(
   fiber: Fiber,
   queue: ConcurrentQueue | null,
@@ -95,17 +96,20 @@ function enqueueUpdate(
 ) {
   // Don't update the `childLanes` on the return path yet. If we already in
   // the middle of rendering, wait until after it has completed.
+  // 看起来就是4个元素一组 保存更新参数
   concurrentQueues[concurrentQueuesIndex++] = fiber;
   concurrentQueues[concurrentQueuesIndex++] = queue;
   concurrentQueues[concurrentQueuesIndex++] = update;
   concurrentQueues[concurrentQueuesIndex++] = lane;
 
+  // 记录需要执行的任务类型
   concurrentlyUpdatedLanes = mergeLanes(concurrentlyUpdatedLanes, lane);
 
   // The fiber's `lane` field is used in some places to check if any work is
   // scheduled, to perform an eager bailout, so we need to update it immediately.
   // TODO: We should probably move this to the "shared" queue instead.
   fiber.lanes = mergeLanes(fiber.lanes, lane);
+  // 检查双缓存节点 更新lane
   const alternate = fiber.alternate;
   if (alternate !== null) {
     alternate.lanes = mergeLanes(alternate.lanes, lane);
@@ -158,7 +162,9 @@ export function enqueueConcurrentClassUpdate<State>(
 ): FiberRoot | null {
   const concurrentQueue: ConcurrentQueue = queue as any;
   const concurrentUpdate: ConcurrentUpdate = update as any;
+  // 标记执行任务种类
   enqueueUpdate(fiber, concurrentQueue, concurrentUpdate, lane);
+  // 递归获取fiberRoot
   return getRootForUpdatedFiber(fiber);
 }
 
@@ -205,13 +211,14 @@ function markUpdateLaneFromFiberToRoot(
   let isHidden = false;
   let parent = sourceFiber.return;
   let node = sourceFiber;
+  // 递归到根节点处理更新模式 两个缓存树都要更新
   while (parent !== null) {
     parent.childLanes = mergeLanes(parent.childLanes, lane);
     alternate = parent.alternate;
     if (alternate !== null) {
       alternate.childLanes = mergeLanes(alternate.childLanes, lane);
     }
-
+    // 处理不可见节点，即屏幕内不显示节点的优化 保留了fiber节点，而真实dom节点则不一定保留，不同类型节点处理不一样
     if (parent.tag === OffscreenComponent) {
       // Check if this offscreen boundary is currently hidden.
       //
@@ -230,6 +237,7 @@ function markUpdateLaneFromFiberToRoot(
       // This case is always accompanied by a warning, but we still need to
       // account for it. (There may be other cases that we haven't discovered,
       // too.)
+      // 标记一下有需要隐藏的节点
       const offscreenInstance: OffscreenInstance | null = parent.stateNode;
       if (
         offscreenInstance !== null &&
@@ -242,7 +250,7 @@ function markUpdateLaneFromFiberToRoot(
     node = parent;
     parent = parent.return;
   }
-
+  // 到根节点了，处理隐藏更新的记录
   if (node.tag === HostRoot) {
     const root: FiberRoot = node.stateNode;
     if (isHidden && update !== null) {
@@ -271,6 +279,7 @@ function getRootForUpdatedFiber(sourceFiber: Fiber): FiberRoot | null {
   // the `childLanes`, anyway, but now those two traversals happen at
   // different times.
   // TODO: Consider adding a `root` backpointer on the update queue.
+  // dev检查函数，忽略
   detectUpdateOnUnmountedFiber(sourceFiber, sourceFiber);
   let node = sourceFiber;
   let parent = node.return;

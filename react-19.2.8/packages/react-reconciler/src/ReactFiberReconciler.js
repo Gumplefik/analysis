@@ -367,7 +367,7 @@ export function updateContainer(
   // 获取更新优先级  或者说是更新模式
   // SyncLane             // 同步，优先级最高
   // InputContinuousLane  // 连续输入事件
-  // DefaultLane          // 普通更新
+  // DefaultLane          // 普通更新 首次就是default
   // TransitionLane       // 过渡更新
   // IdleLane             // 空闲更新
   const lane = requestUpdateLane(current);
@@ -448,7 +448,7 @@ function updateContainerImpl(
   const update = createUpdate(lane);
   // Caution: React DevTools currently depends on this property
   // being called "element".
-  // 保存元素传参
+  // 保存元素传参 就是上游render传过来的jsx组件实例
   update.payload = {element};
   // 保存回调
   callback = callback === undefined ? null : callback;
@@ -464,11 +464,13 @@ function updateContainerImpl(
     }
     update.callback = callback;
   }
-  
+  // 主要是做了任务标记
   const root = enqueueUpdate(rootFiber, update, lane);
   if (root !== null) {
+    // 记录开始任务时间
     startUpdateTimerByLane(lane, 'root.render()', null);
     scheduleUpdateOnFiber(root, rootFiber, lane);
+    // 合并任务，创建任务关联表
     entangleTransitions(root, rootFiber, lane);
   }
 }

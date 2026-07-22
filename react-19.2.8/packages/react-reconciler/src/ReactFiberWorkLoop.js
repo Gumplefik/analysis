@@ -989,6 +989,7 @@ export function scheduleUpdateOnFiber(
 
   // Check if the work loop is currently suspended and waiting for data to
   // finish loading.
+  // 处理异步渲染，检查挂住的原因是否是等待数据
   if (
     // Suspended render phase
     (root === workInProgressRoot &&
