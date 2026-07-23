@@ -459,14 +459,22 @@ export function checkIfRootIsPrerendering(
   return (unblockedLanes & renderLanes) === 0;
 }
 
+
+// 主要如获取renderlanes的关联任务，一起合并进来
 export function getEntangledLanes(root: FiberRoot, renderLanes: Lanes): Lanes {
   let entangledLanes = renderLanes;
-
+  // 如果有输入流要更新的话
   if ((entangledLanes & InputContinuousLane) !== NoLanes) {
     // When updates are sync by default, we entangle continuous priority updates
     // and default updates, so they render in the same batch. The only reason
     // they use separate lanes is because continuous updates should interrupt
     // transitions, but default updates should not.
+    // 假设 111111 & 001000 = 001000
+    // 111111 | 001000 = 111111
+    // 那么如果是 1101111 & 001000 = 000000
+    // 110111 | 000000 = 110111
+    // 看起来这一步操作实际运算没意义，运算的值算出来都是不变的 
+    // A | (A & B) === A
     entangledLanes |= entangledLanes & DefaultLane;
   }
 
@@ -492,16 +500,20 @@ export function getEntangledLanes(root: FiberRoot, renderLanes: Lanes): Lanes {
   // For those exceptions where entanglement is semantically important,
   // we should ensure that there is no partial work at the
   // time we apply the entanglement.
+  // 获取所有任务
   const allEntangledLanes = root.entangledLanes;
+  // 如果有任务的话
   if (allEntangledLanes !== NoLanes) {
     const entanglements = root.entanglements;
+    // 如果要移除的任务在所有任务里
+    // 就从映射表里拿出来关联任务一起合并起来
     let lanes = entangledLanes & allEntangledLanes;
     while (lanes > 0) {
       const index = pickArbitraryLaneIndex(lanes);
       const lane = 1 << index;
 
       entangledLanes |= entanglements[index];
-
+      // 移除任务
       lanes &= ~lane;
     }
   }
@@ -860,10 +872,14 @@ export function createLaneMap<T>(initial: T): LaneMap<T> {
   return laneMap;
 }
 
+// 合并新任务，清空未执行的旧任务
 export function markRootUpdated(root: FiberRoot, updateLane: Lane) {
+  // 合并新任务进去
   root.pendingLanes |= updateLane;
+  // 如果开启了过渡指示器
   if (enableDefaultTransitionIndicator) {
     // Mark that this lane might need a loading indicator to be shown.
+    // 检查是否有过渡任务要执行 合并过渡任务
     root.indicatorLanes |= updateLane & TransitionLanes;
   }
 
@@ -879,6 +895,8 @@ export function markRootUpdated(root: FiberRoot, updateLane: Lane) {
   // We don't do this if the incoming update is idle, because we never process
   // idle updates until after all the regular updates have finished; there's no
   // way it could unblock a transition.
+  // 如果在有新更新任务的时候，旧的任务应该清空
+  // 主要针对supense的场景下，界面有新的变化 那么以前的旧任务应该全部清空
   if (updateLane !== IdleLane) {
     root.suspendedLanes = NoLanes;
     root.pingedLanes = NoLanes;
@@ -894,6 +912,7 @@ export function markRootSuspended(
 ) {
   // TODO: Split this into separate functions for marking the root at the end of
   // a render attempt versus suspending while the root is still in progress.
+  // 合并suspendedLanes任务，剔除执行
   root.suspendedLanes |= suspendedLanes;
   root.pingedLanes &= ~suspendedLanes;
 
@@ -906,6 +925,7 @@ export function markRootSuspended(
   }
 
   // The suspended lanes are no longer CPU-bound. Clear their expiration times.
+  // 任务不再执行，移除计时器
   const expirationTimes = root.expirationTimes;
   let lanes = suspendedLanes;
   while (lanes > 0) {
@@ -916,7 +936,7 @@ export function markRootSuspended(
 
     lanes &= ~lane;
   }
-
+  // 处理useDeferredValue逻辑
   if (spawnedLane !== NoLane) {
     markSpawnedDeferredLane(root, spawnedLane, suspendedLanes);
   }

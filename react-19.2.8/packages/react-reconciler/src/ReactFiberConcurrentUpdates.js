@@ -47,14 +47,21 @@ let concurrentQueuesIndex = 0;
 
 let concurrentlyUpdatedLanes: Lanes = NoLanes;
 
+
+// 批量处理更新，将任务同步到fiber树上
 export function finishQueueingConcurrentUpdates(): void {
+  // 保留任务总数
   const endIndex = concurrentQueuesIndex;
+  // 重置公共变量
   concurrentQueuesIndex = 0;
 
   concurrentlyUpdatedLanes = NoLanes;
 
   let i = 0;
+  // 循环获取任务信息，组成更新链表
   while (i < endIndex) {
+    // 这里就是取出来之前推进来的任务参数 4个参数一组
+    // 场景见enqueueUpdate的实现与调用
     const fiber: Fiber = concurrentQueues[i];
     concurrentQueues[i++] = null;
     const queue: ConcurrentQueue = concurrentQueues[i];
@@ -71,12 +78,16 @@ export function finishQueueingConcurrentUpdates(): void {
         // This is the first update. Create a circular list.
         update.next = update;
       } else {
+        // 将update插到pending和pending。next中间
+        // 插入链表节点
         update.next = pending.next;
         pending.next = update;
       }
       queue.pending = update;
     }
-
+    // 如果有任务要执行 递归到根节点合并更新任务
+    // 这一步是不是在所有lane拿出来合并起来在调用会更好？
+    // 没注意fiber节点不一样，这个不同的树，即从不同起点遍历，如果是同一个就有优化空间
     if (lane !== NoLane) {
       markUpdateLaneFromFiberToRoot(fiber, update, lane);
     }
@@ -193,6 +204,8 @@ export function unsafe_markUpdateLaneFromFiberToRoot(
   return root;
 }
 
+// 递归到根节点合并lane任务更新
+// 看起来很耗费性能
 function markUpdateLaneFromFiberToRoot(
   sourceFiber: Fiber,
   update: ConcurrentUpdate | null,

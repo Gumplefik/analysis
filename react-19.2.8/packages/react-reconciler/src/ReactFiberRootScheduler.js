@@ -122,6 +122,7 @@ export function ensureRootIsScheduled(root: FiberRoot): void {
   // `scheduleTaskForRootDuringMicrotask` runs.
 
   // Add the root to the schedule
+  // 检查任务队列，保证顺序
   if (root === lastScheduledRoot || root.next !== null) {
     // Fast path. This root is already scheduled.
   } else {
@@ -174,6 +175,7 @@ export function flushSyncWorkOnAllRoots() {
   flushSyncWorkAcrossRoots_impl(NoLanes, false);
 }
 
+// legacy模式才会进去
 export function flushSyncWorkOnLegacyRootsOnly() {
   // This is allowed to be called synchronously, but the caller should check
   // the execution context first.

@@ -248,6 +248,7 @@ function unwindWork(
   }
 }
 
+// 主要是回退信息，重置，清除已取消的渲染的相关上下文
 function unwindInterruptedWork(
   current: Fiber | null,
   interruptedWork: Fiber,
@@ -257,6 +258,7 @@ function unwindInterruptedWork(
   // to the current tree provider fiber is just as fast and less error-prone.
   // Ideally we would have a special version of the work loop only
   // for hydration.
+  // 回退分叉信息和路径
   popTreeContext(interruptedWork);
   switch (interruptedWork.tag) {
     case ClassComponent: {

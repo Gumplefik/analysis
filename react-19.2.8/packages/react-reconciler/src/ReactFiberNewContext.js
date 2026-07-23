@@ -57,6 +57,7 @@ let lastContextDependency: ContextDependency<mixed> | null = null;
 
 let isDisallowedContextReadInDEV: boolean = false;
 
+// 重置全局共享变量
 export function resetContextDependencies(): void {
   // This is called right before React yields execution, to ensure `readContext`
   // cannot be called outside the render phase.

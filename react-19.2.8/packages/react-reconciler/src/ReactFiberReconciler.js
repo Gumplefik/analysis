@@ -464,11 +464,12 @@ function updateContainerImpl(
     }
     update.callback = callback;
   }
-  // 主要是做了任务标记
+  // 主要是做了任务标记 返回的就是fiberRoot
   const root = enqueueUpdate(rootFiber, update, lane);
   if (root !== null) {
     // 记录开始任务时间
     startUpdateTimerByLane(lane, 'root.render()', null);
+    // 合并任务，清理旧任务
     scheduleUpdateOnFiber(root, rootFiber, lane);
     // 合并任务，创建任务关联表
     entangleTransitions(root, rootFiber, lane);

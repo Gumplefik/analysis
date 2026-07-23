@@ -565,6 +565,7 @@ export function syncNestedUpdateFlag(): void {
   }
 }
 
+// 获取相对时间
 export function recordRenderTime(): void {
   if (!enableProfilerTimer || !enableComponentPerformanceTrack) {
     return;

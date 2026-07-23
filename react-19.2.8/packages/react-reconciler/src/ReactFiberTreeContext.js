@@ -232,14 +232,14 @@ export function popTreeContext(workInProgress: Fiber) {
   // because the same Fiber may appear on the stack multiple times and for
   // different reasons. We have to keep popping until the work-in-progress is
   // no longer at the top of the stack.
-
+  // 清空任务栈的这个任务 清除指定节点的分叉信息，并回退
   while (workInProgress === treeForkProvider) {
     treeForkProvider = forkStack[--forkStackIndex];
     forkStack[forkStackIndex] = null;
     treeForkCount = forkStack[--forkStackIndex];
     forkStack[forkStackIndex] = null;
   }
-
+  // 清空这个节点的context相关内容 回退context路径
   while (workInProgress === treeContextProvider) {
     treeContextProvider = idStack[--idStackIndex];
     idStack[idStackIndex] = null;

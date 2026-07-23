@@ -321,8 +321,11 @@ export function isFunctionClassComponent(
 }
 
 // This is used to create an alternate fiber to do work on.
+// 创建双缓存节点，复制信息
 export function createWorkInProgress(current: Fiber, pendingProps: any): Fiber {
+  // 获取双缓存节点或初始化双缓存节点
   let workInProgress = current.alternate;
+  // copy信息
   if (workInProgress === null) {
     // We use a double buffering pooling technique because we know that we'll
     // only ever need at most two versions of a tree. We pool the "other" unused
@@ -347,10 +350,11 @@ export function createWorkInProgress(current: Fiber, pendingProps: any): Fiber {
       workInProgress._debugTask = current._debugTask;
       workInProgress._debugHookTypes = current._debugHookTypes;
     }
-
+    // 绑定关联
     workInProgress.alternate = current;
     current.alternate = workInProgress;
   } else {
+    // 更新传参
     workInProgress.pendingProps = pendingProps;
     // Needed because Blocks store data on type.
     workInProgress.type = current.type;
@@ -363,12 +367,13 @@ export function createWorkInProgress(current: Fiber, pendingProps: any): Fiber {
     workInProgress.subtreeFlags = NoFlags;
     workInProgress.deletions = null;
 
+    // 更新key
     if (enableOptimisticKey) {
       // For optimistic keys, the Fibers can have different keys if one is optimistic
       // and the other one is filled in.
       workInProgress.key = current.key;
     }
-
+    // 性能追踪计时器重置
     if (enableProfilerTimer) {
       // We intentionally reset, rather than copy, actualDuration & actualStartTime.
       // This prevents time from endlessly accumulating in new commits.
@@ -381,6 +386,7 @@ export function createWorkInProgress(current: Fiber, pendingProps: any): Fiber {
 
   // Reset all effects except static ones.
   // Static effects are not specific to a render.
+  // 复制参数
   workInProgress.flags = current.flags & StaticMask;
   workInProgress.childLanes = current.childLanes;
   workInProgress.lanes = current.lanes;
@@ -392,6 +398,7 @@ export function createWorkInProgress(current: Fiber, pendingProps: any): Fiber {
 
   // Clone the dependencies object. This is mutated during the render phase, so
   // it cannot be shared with the current fiber.
+  // 初始化依赖信息
   const currentDependencies = current.dependencies;
   workInProgress.dependencies =
     currentDependencies === null

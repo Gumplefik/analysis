@@ -938,6 +938,7 @@ export function resetHooksAfterThrow(): void {
 }
 
 export function resetHooksOnUnwind(workInProgress: Fiber): void {
+  // 如果有计划任务要更新的话
   if (didScheduleRenderPhaseUpdate) {
     // There were render phase updates. These are only valid for this render
     // phase, which we are now aborting. Remove the updates from the queues so
@@ -947,6 +948,7 @@ export function resetHooksOnUnwind(workInProgress: Fiber): void {
     // Only reset the updates from the queue if it has a clone. If it does
     // not have a clone, that means it wasn't processed, and the updates were
     // scheduled before we entered the render phase.
+    // 重置每个即将执行的任务，置为空
     let hook: Hook | null = workInProgress.memoizedState;
     while (hook !== null) {
       const queue = hook.queue;

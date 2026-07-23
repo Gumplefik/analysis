@@ -432,45 +432,64 @@ const RootSuspendedAtTheShell = 6;
 const RootCompleted = 5;
 
 // Describes where we are in the React execution stack
+// 描述当前在执行栈的位置
 let executionContext: ExecutionContext = NoContext;
 // The root we're working on
+// 当前正在执行 Render 的 FiberRoot，所有本轮渲染状态都归属于这个根节点。
 let workInProgressRoot: FiberRoot | null = null;
 // The fiber we're working on
+// 当前 Render 阶段正在处理的 Fiber 节点；React 会不断移动这个指针遍历工作树，为 null 表示本次遍历已完成。
 let workInProgress: Fiber | null = null;
 // The lanes we're rendering
+// 本轮从根节点开始渲染时选中的 Lane 集合，表示这次需要处理哪些优先级的更新。
 let workInProgressRootRenderLanes: Lanes = NoLanes;
 
 export opaque type SuspendedReason = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
+// 未暂停，WorkLoop 可以正常继续执行。
 const NotSuspended: SuspendedReason = 0;
+// 组件抛出普通错误，需要向上寻找 Error Boundary 并展开调用栈。
 const SuspendedOnError: SuspendedReason = 1;
+// 等待组件读取的数据 Thenable；数据完成后重放当前 Fiber。
 const SuspendedOnData: SuspendedReason = 2;
+// 组件刚通过 use 等方式暂停；先让出一次执行权，检查数据能否在微任务中立即完成。
 const SuspendedOnImmediate: SuspendedReason = 3;
+// 等待 CSS、图片等宿主实例/资源完成加载，暂时不能继续提交。
 const SuspendedOnInstance: SuspendedReason = 4;
+// 已为宿主实例让出过执行权；恢复时重新检查资源，成功则继续，否则展开调用栈。
 const SuspendedOnInstanceAndReadyToContinue: SuspendedReason = 5;
+// 兼容旧版手动 throw Promise 的 Suspense；不重放当前 Fiber，直接按旧逻辑展开。
 const SuspendedOnDeprecatedThrowPromise: SuspendedReason = 6;
+// 暂停后已重新获得执行机会；恢复时检查 Thenable，完成则重放，否则进入 fallback。
 const SuspendedAndReadyToContinue: SuspendedReason = 7;
+// 更新进入尚未 hydration 的边界，需要中断当前 Render 并改用 Hydration Lane 重启。
 const SuspendedOnHydration: SuspendedReason = 8;
+// 等待异步 Action 的 Thenable；Action 完成后重放当前 Fiber。
 const SuspendedOnAction: SuspendedReason = 9;
 
 // When this is true, the work-in-progress fiber just suspended (or errored) and
 // we've yet to unwind the stack. In some cases, we may yield to the main thread
 // after this happens. If the fiber is pinged before we resume, we can retry
 // immediately instead of unwinding the stack.
+// 当前 Fiber 暂停或报错的原因，决定恢复后是重试、进入 fallback，还是处理错误。
 let workInProgressSuspendedReason: SuspendedReason = NotSuspended;
+// 当前 Fiber 抛出的值，可能是错误、Promise/Thenable 或异步 Action。
 let workInProgressThrownValue: mixed = null;
 
 // Tracks whether any siblings were skipped during the unwind phase after
 // something suspends. Used to determine whether to schedule another render
 // to prewarm the skipped siblings.
+// 展开暂停节点时是否跳过了兄弟节点；如果跳过，后续可能再调度一次渲染来预热这些节点。
 let workInProgressRootDidSkipSuspendedSiblings: boolean = false;
 // Whether the work-in-progress render is the result of a prewarm/prerender.
 // This tells us whether or not we should render the siblings after
 // something suspends.
+// 本轮是否属于预渲染；用于决定某个节点暂停后是否继续渲染其兄弟节点。
 let workInProgressRootIsPrerendering: boolean = false;
 
 // Whether a ping listener was attached during this render. This is slightly
 // different that whether something suspended, because we don't add multiple
 // listeners to a promise we've already seen (per root and lane).
+// 本轮是否给暂停的 Promise 添加了恢复监听，避免同一个 Root 和 Lane 重复添加监听器。
 let workInProgressRootDidAttachPingListener: boolean = false;
 
 // A contextual version of workInProgressRootRenderLanes. It is a superset of
@@ -484,30 +503,40 @@ let workInProgressRootDidAttachPingListener: boolean = false;
 export let entangledRenderLanes: Lanes = NoLanes;
 
 // Whether to root completed, errored, suspended, etc.
+// 本轮根节点的渲染结果，例如进行中、完成、暂停或发生错误。
 let workInProgressRootExitStatus: RootExitStatus = RootInProgress;
 // The work left over by components that were visited during this render. Only
 // includes unprocessed updates, not work in bailed out children.
+// 本轮访问过但没有处理的 Lane，留给后续渲染继续执行。
 let workInProgressRootSkippedLanes: Lanes = NoLanes;
 // Lanes that were updated (in an interleaved event) during this render.
+// Render 进行期间，由外部事件插入的更新对应的 Lane。
 let workInProgressRootInterleavedUpdatedLanes: Lanes = NoLanes;
 // Lanes that were updated during the render phase (*not* an interleaved event).
+// 组件执行 Render 时直接产生的更新对应的 Lane，例如 Render 阶段调用 setState。
 let workInProgressRootRenderPhaseUpdatedLanes: Lanes = NoLanes;
 // Lanes that were pinged (in an interleaved event) during this render.
+// Render 期间数据已经就绪并通知 React 可以重试的 Lane。
 let workInProgressRootPingedLanes: Lanes = NoLanes;
 // If this render scheduled deferred work, this is the lane of the deferred task.
+// 本轮渲染产生的延迟任务所使用的 Lane。
 let workInProgressDeferredLane: Lane = NoLane;
 // Represents the retry lanes that were spawned by this render and have not
 // been pinged since, implying that they are still suspended.
+// 本轮产生但尚未收到恢复通知的重试 Lane，表示对应任务仍处于暂停状态。
 let workInProgressSuspendedRetryLanes: Lanes = NoLanes;
 // Errors that are thrown during the render phase.
+// 本轮并发 Render 阶段捕获的错误集合。
 let workInProgressRootConcurrentErrors: Array<CapturedValue<mixed>> | null =
   null;
 // These are errors that we recovered from without surfacing them to the UI.
 // We will log them once the tree commits.
+// 已被 Error Boundary 等机制恢复的错误，提交完成后统一记录。
 let workInProgressRootRecoverableErrors: Array<CapturedValue<mixed>> | null =
   null;
 
 // Tracks when an update occurs during the render phase.
+// 本轮 Render 是否递归触发了新的 Render 更新，用于检测无限更新。
 let workInProgressRootDidIncludeRecursiveRenderUpdate: boolean = false;
 // Thacks when an update occurs during the commit phase. It's a separate
 // variable from the one for renders because the commit phase may run
@@ -527,17 +556,20 @@ const FALLBACK_THROTTLE_MS: number = 300;
 
 // The absolute time for when we should start giving up on rendering
 // more and prefer CPU suspense heuristics instead.
+// 本轮 Render 的目标截止时间，超过后优先采用 CPU Suspense 策略，不再继续渲染更多内容。
 let workInProgressRootRenderTargetTime: number = Infinity;
 // How long a render is supposed to take before we start following CPU
 // suspense heuristics and opt out of rendering more content.
 const RENDER_TIMEOUT_MS = 500;
 
+// 与本轮 Render 关联的 Transition 集合，用于 Transition 跟踪和回调。
 let workInProgressTransitions: Array<Transition> | null = null;
 export function getWorkInProgressTransitions(): null | Array<Transition> {
   return workInProgressTransitions;
 }
 
 // The first setState call that eventually caused the current render.
+// 最终触发本轮 Render 的第一个 setState 调用任务，用于开发环境中的调用链跟踪。
 let workInProgressUpdateTask: null | ConsoleTask = null;
 
 let currentPendingTransitionCallbacks: PendingTransitionCallbacks | null = null;
@@ -970,6 +1002,7 @@ export function peekDeferredLane(): Lane {
   return workInProgressDeferredLane;
 }
 
+// 主要处理任务合并和清理旧任务
 export function scheduleUpdateOnFiber(
   root: FiberRoot,
   fiber: Fiber,
@@ -989,21 +1022,25 @@ export function scheduleUpdateOnFiber(
 
   // Check if the work loop is currently suspended and waiting for data to
   // finish loading.
-  // 处理异步渲染，检查挂住的原因是否是等待数据
+  // 处理异步渲染，检查挂住的原因是否是等待数据，或者处理action操作
   if (
     // Suspended render phase
     (root === workInProgressRoot &&
       (workInProgressSuspendedReason === SuspendedOnData ||
         workInProgressSuspendedReason === SuspendedOnAction)) ||
     // Suspended commit phase
+    // 等待资源场景 暂缓渲染
     root.cancelPendingCommit !== null
   ) {
     // The incoming update might unblock the current render. Interrupt the
     // current attempt and restart from the top.
+    // 初始化新的fiber树 保存到workInProgress上共享 一个比较耗费性能的任务，因为要遍历多次fiber树去合并任务
     prepareFreshStack(root, NoLanes);
     const didAttemptEntireTree = false;
+    // 主要清理一些任务和计时器
     markRootSuspended(
       root,
+      // 下面两个变量已经在prepareFreshStack里面重新赋值了
       workInProgressRootRenderLanes,
       workInProgressDeferredLane,
       didAttemptEntireTree,
@@ -1011,10 +1048,21 @@ export function scheduleUpdateOnFiber(
   }
 
   // Mark that the root has a pending update.
+  // 合并任务，清除suspense任务
   markRootUpdated(root, lane);
 
+  // 检查当前更新是不是在 Render 执行过程中产生的
+  // 主要处理一些异常场景 防止渲染死循环
+  // function Child({setCount}) {
+  //   Child 渲染过程中更新 Parent
+  //   setCount(1);
+
+  //   return <div>Child</div>;
+  // }
   if (
+    // 当前是否在render阶段
     (executionContext & RenderContext) !== NoContext &&
+    // 并且还是正在渲染的root发生了更新
     root === workInProgressRoot
   ) {
     // This update was dispatched during the render phase. This is a mistake
@@ -1022,9 +1070,11 @@ export function scheduleUpdateOnFiber(
     // hook updates, which are handled differently and don't reach this
     // function), but there are some internal React features that use this as
     // an implementation detail, like selective hydration.
+    // 发出警告
     warnAboutRenderPhaseUpdatesInDEV(fiber);
 
     // Track lanes that were updated during the render phase
+    // 合并更新任务
     workInProgressRootRenderPhaseUpdatedLanes = mergeLanes(
       workInProgressRootRenderPhaseUpdatedLanes,
       lane,
@@ -1037,9 +1087,9 @@ export function scheduleUpdateOnFiber(
         addFiberToLanesMap(root, fiber, lane);
       }
     }
-
+    // 异常检查
     warnIfUpdatesNotWrappedWithActDEV(fiber);
-
+    // 过渡追踪
     if (enableTransitionTracing) {
       const transition = ReactSharedInternals.T;
       if (transition !== null && transition.name != null) {
@@ -1050,16 +1100,18 @@ export function scheduleUpdateOnFiber(
         addTransitionToLanesMap(root, transition, lane);
       }
     }
-
+    // 如果是正在渲染的节点发生了新的更新
     if (root === workInProgressRoot) {
       // Received an update to a tree that's in the middle of rendering. Mark
       // that there was an interleaved update work on this root.
+      // 检查没有死循环 就合并任务
       if ((executionContext & RenderContext) === NoContext) {
         workInProgressRootInterleavedUpdatedLanes = mergeLanes(
           workInProgressRootInterleavedUpdatedLanes,
           lane,
         );
       }
+      // 如果现在是suspense状态 那么应该纳入新更新，清理旧的更新任务
       if (workInProgressRootExitStatus === RootSuspendedWithDelay) {
         // The root already suspended with a delay, which means this render
         // definitely won't finish. Since we have a new update, let's mark it as
@@ -1068,6 +1120,7 @@ export function scheduleUpdateOnFiber(
         // TODO: Make sure this doesn't override pings that happen while we've
         // already started rendering.
         const didAttemptEntireTree = false;
+        // 同1040处理suspense时出现新更新 合并任务，清理旧的任务
         markRootSuspended(
           root,
           workInProgressRootRenderLanes,
@@ -1076,8 +1129,9 @@ export function scheduleUpdateOnFiber(
         );
       }
     }
-
+    // 检查调度
     ensureRootIsScheduled(root);
+    // 同步更新，当前为初始阶段，不是legacy模式 非并发模式
     if (
       lane === SyncLane &&
       executionContext === NoContext &&
@@ -1092,6 +1146,7 @@ export function scheduleUpdateOnFiber(
         // scheduleCallbackForFiber to preserve the ability to schedule a callback
         // without immediately flushing it. We only do this for user-initiated
         // updates, to preserve historical behavior of legacy mode.
+        // 重置时间戳
         resetRenderTimer();
         flushSyncWorkOnLegacyRootsOnly();
       }
@@ -1753,8 +1808,10 @@ function isRenderConsistentWithExternalStores(finishedWork: Fiber): boolean {
 // the work loop.
 
 function markRootUpdated(root: FiberRoot, updatedLanes: Lanes) {
+  // 合并执行任务，清空旧的无效的任务
   _markRootUpdated(root, updatedLanes);
 
+  // 错误检查标志 当前版本未启用
   if (enableInfiniteRenderLoopDetection) {
     // Check for recursive updates
     if (executionContext & RenderContext) {
@@ -1792,18 +1849,23 @@ function markRootSuspended(
   spawnedLane: Lane,
   didAttemptEntireTree: boolean,
 ) {
+  // 该逻辑目前不进去
   if (enableParallelTransitions) {
     // When suspending, we should always mark the entangled lanes as suspended.
+    // 还是一样的合并suspendedLanes的关联任务
     suspendedLanes = getEntangledLanes(root, suspendedLanes);
   }
 
   // When suspending, we should always exclude lanes that were pinged or (more
   // rarely, since we try to avoid it) updated during the render phase.
+  // 剔除workInProgressRootPingedLanes的任务
   suspendedLanes = removeLanes(suspendedLanes, workInProgressRootPingedLanes);
+  // 剔除其他任务
   suspendedLanes = removeLanes(
     suspendedLanes,
     workInProgressRootInterleavedUpdatedLanes,
   );
+  // 清理任务，清理定时器
   _markRootSuspended(root, suspendedLanes, spawnedLane, didAttemptEntireTree);
 }
 
@@ -1963,21 +2025,27 @@ export function getEntangledRenderLanes(): Lanes {
   return entangledRenderLanes;
 }
 
+// 取消当前任务的执行，清除相关上下文
 function resetWorkInProgressStack() {
   if (workInProgress === null) return;
   let interruptedWork;
+  // 没有异步等待任务场景
   if (workInProgressSuspendedReason === NotSuspended) {
     // Normal case. Work-in-progress hasn't started yet. Unwind all
     // its parents.
+    // 获取当前渲染任务的父节点
     interruptedWork = workInProgress.return;
   } else {
     // Work-in-progress is in suspended state. Reset the work loop and unwind
     // both the suspended fiber and all its parents.
+    // 重置相关变量
     resetSuspendedWorkLoopOnUnwind(workInProgress);
     interruptedWork = workInProgress;
   }
+  // 向上遍历，对每个双缓存节点
   while (interruptedWork !== null) {
     const current = interruptedWork.alternate;
+    // 清除双缓存节点上的上下文，回退
     unwindInterruptedWork(
       current,
       interruptedWork,
@@ -2007,7 +2075,11 @@ function finalizeRender(lanes: Lanes, finalizationTime: number): void {
   }
 }
 
+
+// 丢失上次未完成或者已经过期的渲染
+// 重新render
 function prepareFreshStack(root: FiberRoot, lanes: Lanes): Fiber {
+  // 如果开启了性能检查跟踪
   if (enableProfilerTimer && enableComponentPerformanceTrack) {
     // The order of tracks within a group are determined by the earliest start time.
     // Are tracks should show up in priority order and we should ideally always show
@@ -2016,11 +2088,13 @@ function prepareFreshStack(root: FiberRoot, lanes: Lanes): Fiber {
     // recorded aren't considered for ordering purposes, we need to keep adding these
     // over and over again in case recording has just started. We can't tell when
     // recording starts.
+    // 跟踪日志 创建时间戳
     markAllLanesInOrder();
 
     const previousRenderStartTime = renderStartTime;
     // Starting a new render. Log the end of any previous renders and the
     // blocked time before the render started.
+    // 等价performance.now
     recordRenderTime();
     // If this was a restart, e.g. due to an interrupting update, then there's no space
     // in the track to log the cause since we'll have rendered all the way up until the
@@ -2223,24 +2297,30 @@ function prepareFreshStack(root: FiberRoot, lanes: Lanes): Fiber {
   }
 
   const timeoutHandle = root.timeoutHandle;
+  // 如果有计时器的话就清除计时器
   if (timeoutHandle !== noTimeout) {
     // The root previous suspended and scheduled a timeout to commit a fallback
     // state. Now that we have additional work, cancel the timeout.
     root.timeoutHandle = noTimeout;
     // $FlowFixMe[incompatible-call] Complains noTimeout is not a TimeoutID, despite the check above
+    // 清除计时器
     cancelTimeout(timeoutHandle);
   }
   const cancelPendingCommit = root.cancelPendingCommit;
+  // 清除回调函数，执行取消提交
   if (cancelPendingCommit !== null) {
     root.cancelPendingCommit = null;
     cancelPendingCommit();
   }
-
+  // 切换值无任务模式
   pendingEffectsLanes = NoLanes;
-
+  // 清除渲染，回退上下文
   resetWorkInProgressStack();
+  // 切换更新节点
   workInProgressRoot = root;
+  // 创建双缓存树
   const rootWorkInProgress = createWorkInProgress(root.current, null);
+  // 切换更新节点到缓存节点 更新共享上下文
   workInProgress = rootWorkInProgress;
   workInProgressRootRenderLanes = lanes;
   workInProgressSuspendedReason = NotSuspended;
@@ -2266,8 +2346,9 @@ function prepareFreshStack(root: FiberRoot, lanes: Lanes): Fiber {
   // which is currently suspended. We should be able to render the Transition
   // and Sync lane in the same batch, but at Transition priority, because the
   // Sync lane already suspended.
+  // 获取lanes的关联任务，一起合并起来
   entangledRenderLanes = getEntangledLanes(root, lanes);
-
+  // 清空任务栈变量，合并任务到fiber树上
   finishQueueingConcurrentUpdates();
 
   if (__DEV__) {
@@ -2275,10 +2356,11 @@ function prepareFreshStack(root: FiberRoot, lanes: Lanes): Fiber {
 
     ReactStrictModeWarnings.discardPendingWarnings();
   }
-
+  // 返回新创建的fiber树
   return rootWorkInProgress;
 }
 
+// 重置一些相关变量
 function resetSuspendedWorkLoopOnUnwind(fiber: Fiber) {
   // Reset module-level state that was set during the render phase.
   resetContextDependencies();
