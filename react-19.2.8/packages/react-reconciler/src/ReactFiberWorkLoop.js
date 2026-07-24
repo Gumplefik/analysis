@@ -751,30 +751,53 @@ const ABORTED_VIEW_TRANSITION_COMMIT = 1;
 const DELAYED_PASSIVE_COMMIT = 2;
 const ANIMATION_STARTED_COMMIT = 3;
 
+// 当前没有等待执行的 Commit 副作用。
 const NO_PENDING_EFFECTS = 0;
+// 等待执行 Mutation 阶段：插入、删除、更新 DOM，并处理相关宿主副作用。
 const PENDING_MUTATION_PHASE = 1;
+// 等待执行 Layout 阶段：运行 useLayoutEffect、生命周期方法并绑定 ref。
 const PENDING_LAYOUT_PHASE = 2;
+// 等待执行 DOM 修改后的阶段：处理 ViewTransition 等依赖新 DOM 状态的工作。
 const PENDING_AFTER_MUTATION_PHASE = 3;
+// 等待处理 Commit 阶段额外产生的工作，例如启动 ViewTransition 动画。
 const PENDING_SPAWNED_WORK = 4;
+// 等待执行 Passive 阶段：运行 useEffect 及其清理函数。
 const PENDING_PASSIVE_PHASE = 5;
+// 等待手势 Transition 的 Mutation 阶段，提交手势对应的 DOM 修改。
 const PENDING_GESTURE_MUTATION_PHASE = 6;
+// 等待启动或完成手势 Transition 的动画阶段。
 const PENDING_GESTURE_ANIMATION_PHASE = 7;
+// 当前等待执行的 Commit 副作用阶段，例如 DOM 修改、Layout Effect 或 Passive Effect。
 let pendingEffectsStatus: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 = 0;
+// 当前正在等待执行 Commit 副作用的 FiberRoot。
 let pendingEffectsRoot: FiberRoot = null as any;
+// Render 已经完成、等待 Commit 的新 Fiber 树。
 let pendingFinishedWork: Fiber = null as any;
+// 产生本次待执行 Commit 副作用的 Lane 集合。
 let pendingEffectsLanes: Lanes = NoLanes;
+// 本次 Commit 完成后，Root 中仍然没有处理完的 Lane 集合。
 let pendingEffectsRemainingLanes: Lanes = NoLanes;
+// 本次 Render 完成的时间，用于性能分析。
 let pendingEffectsRenderEndTime: number = -0; // Profiling-only
+// 等待 Passive Effect 阶段继续处理和通知的 Transition 集合。
 let pendingPassiveTransitions: Array<Transition> | null = null;
+// Render 中已恢复的错误，等待 Commit 完成后统一上报。
 let pendingRecoverableErrors: null | Array<CapturedValue<mixed>> = null;
+// 当前正在等待完成启动流程的 ViewTransition 实例。
 let pendingViewTransition: null | RunningViewTransition = null;
+// ViewTransition 或手势 Transition 提交后等待触发的事件回调。
 let pendingViewTransitionEvents: Array<
   (types: Array<string>) => void | (() => void),
 > | null = null;
+// 本次 ViewTransition 关联的 Transition 类型，用于传给对应的事件回调。
 let pendingTransitionTypes: null | TransitionTypes = null;
+// 本次待提交的 Render 是否在 Render 阶段又产生了更新，用于检测递归更新。
 let pendingDidIncludeRenderPhaseUpdate: boolean = false;
+// Commit 因资源或 ViewTransition 被暂停的原因，用于性能分析。
 let pendingSuspendedCommitReason: SuspendedCommitReason = null; // Profiling-only
+// Commit 被延迟的类型，例如等待 Passive Effect、动画开始或 ViewTransition 中止。
 let pendingDelayedCommitReason: DelayedCommitReason = IMMEDIATE_COMMIT; // Profiling-only
+// ViewTransition 被暂停的具体原因，用于性能分析。
 let pendingSuspendedViewTransitionReason: null | string = null; // Profiling-only
 
 // Use these to prevent an infinite loop of nested updates

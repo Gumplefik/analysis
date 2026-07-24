@@ -21,10 +21,15 @@ import {
 
 export opaque type EventPriority = Lane;
 
+// 当前没有正在处理的事件，不对应任何更新优先级。
 export const NoEventPriority: EventPriority = NoLane;
+// 离散事件优先级：用于 click、keydown、submit 等需要立即响应的单次用户操作，对应同步 Lane。
 export const DiscreteEventPriority: EventPriority = SyncLane;
+// 连续事件优先级：用于 mousemove、pointermove、scroll 等连续触发且可合并的用户操作。
 export const ContinuousEventPriority: EventPriority = InputContinuousLane;
+// 默认事件优先级：用于没有特殊优先级要求的普通事件和更新。
 export const DefaultEventPriority: EventPriority = DefaultLane;
+// 空闲事件优先级：用于不影响当前交互、可以等浏览器空闲时再处理的后台更新。
 export const IdleEventPriority: EventPriority = IdleLane;
 
 export function higherEventPriority(

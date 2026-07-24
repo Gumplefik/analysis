@@ -212,11 +212,15 @@ let nextTransitionUpdateLane: Lane = TransitionLane1;
 let nextTransitionDeferredLane: Lane = TransitionLane11;
 let nextRetryLane: Lane = RetryLane1;
 
+
+// 定义了不同任务的优先级，同时可以取出最右侧的任务
 function getHighestPriorityLanes(lanes: Lanes | Lane): Lanes {
+  // 同步任务优先级最高
   const pendingSyncLanes = lanes & SyncUpdateLanes;
   if (pendingSyncLanes !== 0) {
     return pendingSyncLanes;
   }
+  // 获取最优先的任务，最右侧的任务
   switch (getHighestPriorityLane(lanes)) {
     case SyncHydrationLane:
       return SyncHydrationLane;
@@ -281,12 +285,14 @@ function getHighestPriorityLanes(lanes: Lanes | Lane): Lanes {
   }
 }
 
+// 按优先级获取下一个任务，有可能是当前执行的任务，也有可能是从root上按优先级拿下来的任务
 export function getNextLanes(
   root: FiberRoot,
   wipLanes: Lanes,
   rootHasPendingCommit: boolean,
 ): Lanes {
   // Early bailout if there's no pending work left.
+  // 检查是否有等待执行的任务
   const pendingLanes = root.pendingLanes;
   if (pendingLanes === NoLanes) {
     return NoLanes;
@@ -313,16 +319,24 @@ export function getNextLanes(
 
   // Do not work on any idle work until all the non-idle work has finished,
   // even if the work is suspended.
+  // 检查是否有需要执行的常规任务 就是优先执行常规任务，再执行suspense之类的延迟任务
   const nonIdlePendingLanes = pendingLanes & NonIdleLanes;
+  // 如果有任务
+  // if else主要针对的就是同步任务和异步任务两种模式，异步主要是suspsense之类的
   if (nonIdlePendingLanes !== NoLanes) {
     // First check for fresh updates.
+    // 剔除suspense的任务
     const nonIdleUnblockedLanes = nonIdlePendingLanes & ~suspendedLanes;
+    // 如果还有任务的话就获取优先级较高的任务
     if (nonIdleUnblockedLanes !== NoLanes) {
+      // 取出最右侧的任务
       nextLanes = getHighestPriorityLanes(nonIdleUnblockedLanes);
     } else {
       // No fresh updates. Check if suspended work has been pinged.
+      // 看看有没有suspense的任务走到了资源完成 然后去执行
       const nonIdlePingedLanes = nonIdlePendingLanes & pingedLanes;
       if (nonIdlePingedLanes !== NoLanes) {
+        // 执行资源就绪的任务
         nextLanes = getHighestPriorityLanes(nonIdlePingedLanes);
       } else {
         // Nothing has been pinged. Check for lanes that need to be prewarmed.
@@ -342,6 +356,7 @@ export function getNextLanes(
 
     // First check for fresh updates.
     const unblockedLanes = pendingLanes & ~suspendedLanes;
+    // 这里主要是按照渲染优先顺序和任务优先逻辑依次返回任务
     if (unblockedLanes !== NoLanes) {
       nextLanes = getHighestPriorityLanes(unblockedLanes);
     } else {
@@ -351,6 +366,7 @@ export function getNextLanes(
       } else {
         // Nothing has been pinged. Check for lanes that need to be prewarmed.
         if (!rootHasPendingCommit) {
+          // 有没有需要之前检查过但还没继续的任务
           const lanesToPrewarm = pendingLanes & ~warmLanes;
           if (lanesToPrewarm !== NoLanes) {
             nextLanes = getHighestPriorityLanes(lanesToPrewarm);
@@ -359,7 +375,7 @@ export function getNextLanes(
       }
     }
   }
-
+  // 如果没有任务了
   if (nextLanes === NoLanes) {
     // This should only be reachable if we're suspended
     // TODO: Consider warning in this path if a fallback timer is not scheduled.
@@ -369,6 +385,7 @@ export function getNextLanes(
   // If we're already in the middle of a render, switching lanes will interrupt
   // it and we'll lose our progress. We should only do this if the new lanes are
   // higher priority.
+  // 如果在渲染中但是任务还没有完成
   if (
     wipLanes !== NoLanes &&
     wipLanes !== nextLanes &&
@@ -376,6 +393,7 @@ export function getNextLanes(
     // bother waiting until the root is complete.
     (wipLanes & suspendedLanes) === NoLanes
   ) {
+    // 看看是不是当前渲染优先级比较高
     const nextLane = getHighestPriorityLane(nextLanes);
     const wipLane = getHighestPriorityLane(wipLanes);
     if (
@@ -585,6 +603,8 @@ function computeExpirationTime(lane: Lane, currentTime: number) {
   }
 }
 
+// 标记过期的任务
+// 检查每个任务的过期时间，如果过期标记到过期列表，如果没过期时间，就赋予一个
 export function markStarvedLanesAsExpired(
   root: FiberRoot,
   currentTime: number,
@@ -592,10 +612,11 @@ export function markStarvedLanesAsExpired(
   // TODO: This gets called every time we yield. We can optimize by storing
   // the earliest expiration time on the root. Then use that to quickly bail out
   // of this function.
-
+  // 获取三类任务
   const pendingLanes = root.pendingLanes;
   const suspendedLanes = root.suspendedLanes;
   const pingedLanes = root.pingedLanes;
+  // 还有过期时间
   const expirationTimes = root.expirationTimes;
 
   // Iterate through the pending lanes and check if we've reached their
@@ -606,30 +627,37 @@ export function markStarvedLanesAsExpired(
   // We exclude retry lanes because those must always be time sliced, in order
   // to unwrap uncached promises.
   // TODO: Write a test for this
+  // 检查是否需要执行retry 目前为false所以默认走逻辑2 剔除retry
   let lanes = enableRetryLaneExpiration
     ? pendingLanes
     : pendingLanes & ~RetryLanes;
   while (lanes > 0) {
+    // 取出单个任务，这两个代码在很多地方都这么写，干脆写个pickArbitraryLane不就行了
+    // 不过看起来也常用index 有复用空间
     const index = pickArbitraryLaneIndex(lanes);
     const lane = 1 << index;
-
+    // 获取指定任务的过期时间 
     const expirationTime = expirationTimes[index];
+    // 如果不过期的话
     if (expirationTime === NoTimestamp) {
       // Found a pending lane with no expiration time. If it's not suspended, or
       // if it's pinged, assume it's CPU-bound. Compute a new expiration time
       // using the current time.
+      // 非这两种任务就赋予一个过期时间
       if (
         (lane & suspendedLanes) === NoLanes ||
         (lane & pingedLanes) !== NoLanes
       ) {
         // Assumes timestamps are monotonically increasing.
+        // 创建过期时间依据任务不同基本就是250ms或者5000ms
         expirationTimes[index] = computeExpirationTime(lane, currentTime);
       }
     } else if (expirationTime <= currentTime) {
       // This lane expired
+      // 标记该任务已过期
       root.expiredLanes |= lane;
     }
-
+    // 剔除任务
     lanes &= ~lane;
   }
 }
@@ -800,7 +828,9 @@ export function claimNextRetryLane(): Lane {
   return lane;
 }
 
+// 取出最右侧的1，因为这个二进制任务栈是最右侧优先级别最高的
 export function getHighestPriorityLane(lanes: Lanes): Lane {
+  // -lanes就是取反加1
   return lanes & -lanes;
 }
 

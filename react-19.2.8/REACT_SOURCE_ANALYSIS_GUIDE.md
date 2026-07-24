@@ -539,3 +539,36 @@ Lane 属于 reconciler 的更新模型；Scheduler Priority 属于任务执行�
 这一天的成果应该是一张调用链图和一页术语笔记，而不是读完多少行源码。
 
 完成后，第二天再从 `beginWork()` 进入 Function Component、Hooks 和子节点协调。
+
+## 17. Suspense Lane 状态流程
+
+```mermaid
+flowchart TD
+    A["pendingLanes<br/>任务等待执行"]
+    B["开始 Render"]
+    C{"资源是否就绪？"}
+    D["suspendedLanes<br/>资源未就绪，任务暂停"]
+    E["Promise / Thenable 完成"]
+    F["pingedLanes<br/>收到恢复通知，可以重试"]
+    G["重新 Render"]
+    H["完成 Render 并 Commit"]
+
+    A --> B
+    B --> C
+    C -- 否 --> D
+    D --> E
+    E --> F
+    F --> G
+    G --> C
+    C -- 是 --> H
+```
+
+各状态的含义：
+
+```text
+pendingLanes：Root 中尚未完成、等待调度的任务。
+suspendedLanes：已经尝试执行，但因数据或资源未就绪而暂停的任务。
+pingedLanes：暂停任务依赖的资源发生变化，可以重新尝试执行的任务。
+```
+
+`pingedLanes` 只代表“可以重试”，不代表资源一定全部就绪。如果重新 Render 时仍有其他资源未完成，该 Lane 会再次进入暂停状态。

@@ -163,7 +163,9 @@ export function ensureScheduleIsScheduled(): void {
     }
   } else {
     if (!didScheduleMicrotask) {
+      // 切换schedule微任务标记
       didScheduleMicrotask = true;
+      // 创建微任务去渲染
       scheduleImmediateRootScheduleTask();
     }
   }
@@ -258,9 +260,13 @@ function processRootScheduleInImmediateTask() {
   processRootScheduleInMicrotask();
 }
 
+// 处理微任务
+// 微任务的调度系统的主要入口点。
+// 遍历所有已调度的 Fiber 根节点，确定需要完成的工作，并按适当的优先级调度任务。
 function processRootScheduleInMicrotask() {
   // This function is always called inside a microtask. It should never be
   // called synchronously.
+  // 重置调度标志
   didScheduleMicrotask = false;
   if (__DEV__) {
     didScheduleMicrotask_act = false;
@@ -270,6 +276,7 @@ function processRootScheduleInMicrotask() {
   mightHavePendingSyncWork = false;
 
   let syncTransitionLanes = NoLanes;
+  // 如果有过渡任务 就处理相关内容 主要检查是否需要同步过渡
   if (currentEventTransitionLane !== NoLane) {
     if (shouldAttemptEagerTransition()) {
       // A transition was scheduled during an event, but we're going to try to
@@ -285,14 +292,16 @@ function processRootScheduleInMicrotask() {
       syncTransitionLanes = DefaultLane;
     }
   }
-
+  // 记录当前时间戳，主要是渲染有时间要求，不能太长
   const currentTime = now();
 
   let prev = null;
+  // 在ensureRootIsScheduled的里面赋值的
   let root = firstScheduledRoot;
   while (root !== null) {
     const next = root.next;
     const nextLanes = scheduleTaskForRootDuringMicrotask(root, currentTime);
+    // 如果接下来没有任务的话 就
     if (nextLanes === NoLane) {
       // This root has no more pending work. Remove it from the schedule. To
       // guard against subtle reentrancy bugs, this microtask is the only place
@@ -303,6 +312,7 @@ function processRootScheduleInMicrotask() {
       root.next = null;
       if (prev === null) {
         // This is the new head of the list
+        // 切换执行节点，其实就是意思next之前的任务都执行完了，现在到next节点了，后续从这里开始跑
         firstScheduledRoot = next;
       } else {
         prev.next = next;
@@ -396,29 +406,39 @@ function scheduleTaskForRootDuringMicrotask(
 
   // Check if any lanes are being starved by other work. If so, mark them as
   // expired so we know to work on those next.
+  // 标记过期任务，赋予任务过期时间
   markStarvedLanesAsExpired(root, currentTime);
 
   // Determine the next lanes to work on, and their priority.
+  // 获取passive阶段的effect
   const rootWithPendingPassiveEffects = getRootWithPendingPassiveEffects();
+  // 获取还未执行的任务
   const pendingPassiveEffectsLanes = getPendingPassiveEffectsLanes();
+  // 获取工作节点
   const workInProgressRoot = getWorkInProgressRoot();
+  // 要执行的任务
   const workInProgressRootRenderLanes = getWorkInProgressRootRenderLanes();
   const rootHasPendingCommit =
     root.cancelPendingCommit !== null || root.timeoutHandle !== noTimeout;
+  // 获取接下来要执行的任务
   const nextLanes =
+    // 由于enableYieldingBeforePassive是false所以逻辑1不进去
     enableYieldingBeforePassive && root === rootWithPendingPassiveEffects
       ? // This will schedule the callback at the priority of the lane but we used to
         // always schedule it at NormalPriority. Discrete will flush it sync anyway.
         // So the only difference is Idle and it doesn't seem necessarily right for that
         // to get upgraded beyond something important just because we're past commit.
         pendingPassiveEffectsLanes
+        // 按优先级获取下一个任务
       : getNextLanes(
           root,
           root === workInProgressRoot ? workInProgressRootRenderLanes : NoLanes,
           rootHasPendingCommit,
         );
-
+  
+  // 已经提交给schedule的任务句柄  就是是否有在执行任务
   const existingCallbackNode = root.callbackNode;
+  // 接下来没任务了，并且在等待数据 或者等待资源加载 取消调度任务，等资源就绪在执行
   if (
     // Check if there's nothing to work on
     nextLanes === NoLanes ||
@@ -441,6 +461,8 @@ function scheduleTaskForRootDuringMicrotask(
   }
 
   // Schedule a new callback in the host environment.
+  // 预渲染要用并发模式
+  // 如果非预渲染并且是同步任务 那就清理旧的schedule
   if (
     includesSyncLane(nextLanes) &&
     // If we're prerendering, then we should use the concurrent work loop
@@ -460,7 +482,7 @@ function scheduleTaskForRootDuringMicrotask(
     // We use the highest priority lane to represent the priority of the callback.
     const existingCallbackPriority = root.callbackPriority;
     const newCallbackPriority = getHighestPriorityLane(nextLanes);
-
+    // 优先级一样的场景
     if (
       newCallbackPriority === existingCallbackPriority &&
       // Special case related to `act`. If the currently scheduled task is a
@@ -473,37 +495,48 @@ function scheduleTaskForRootDuringMicrotask(
       )
     ) {
       // The priority hasn't changed. We can reuse the existing task.
+      // 优先级不变
       return newCallbackPriority;
     } else {
+      // 不然的话就取消任务
       // Cancel the existing callback. We'll schedule a new one below.
       cancelCallback(existingCallbackNode);
     }
 
     let schedulerPriorityLevel;
+    // 获取事件优先级
     switch (lanesToEventPriority(nextLanes)) {
       // Scheduler does have an "ImmediatePriority", but now that we use
       // microtasks for sync work we no longer use that. Any sync work that
       // reaches this path is meant to be time sliced.
+      // 离散事件
+      // 连续事件
       case DiscreteEventPriority:
       case ContinuousEventPriority:
+        // 用户阻塞调度
         schedulerPriorityLevel = UserBlockingSchedulerPriority;
         break;
+      // 默认事件
       case DefaultEventPriority:
+        // 常规调度      
         schedulerPriorityLevel = NormalSchedulerPriority;
         break;
+      // 空闲事件
       case IdleEventPriority:
+        // 空闲调度
         schedulerPriorityLevel = IdleSchedulerPriority;
         break;
       default:
+        // 常规调度
         schedulerPriorityLevel = NormalSchedulerPriority;
         break;
     }
-
+    // 调度任务的执行
     const newCallbackNode = scheduleCallback(
       schedulerPriorityLevel,
       performWorkOnRootViaSchedulerTask.bind(null, root),
     );
-
+    // 保存相关回调信息
     root.callbackPriority = newCallbackPriority;
     root.callbackNode = newCallbackNode;
     return newCallbackPriority;
@@ -512,6 +545,8 @@ function scheduleTaskForRootDuringMicrotask(
 
 type RenderTaskFn = (didTimeout: boolean) => RenderTaskFn | null;
 
+
+// schdule调度任务 执行渲染逻辑
 function performWorkOnRootViaSchedulerTask(
   root: FiberRoot,
   didTimeout: boolean,
@@ -666,6 +701,7 @@ function scheduleImmediateRootScheduleTask() {
   // Alternatively, can we move this check to the host config?
   // $FlowFixMe[constant-condition]
   if (supportsMicrotasks) {
+    // 推入微任务栈
     scheduleMicrotask(() => {
       // In Safari, appending an iframe forces microtasks to run.
       // https://github.com/facebook/react/issues/22459
@@ -686,6 +722,7 @@ function scheduleImmediateRootScheduleTask() {
         );
         return;
       }
+      // 提交任务执行
       processRootScheduleInMicrotask();
     });
   } else {
