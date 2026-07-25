@@ -26,6 +26,7 @@ import {
   ViewTransitionNamedStatic,
 } from './ReactFiberFlags';
 import {
+  // 渲染器是否允许在 Commit 阶段直接修改已有的宿主节点。
   supportsMutation,
   applyViewTransitionName,
   restoreViewTransitionName,
@@ -96,6 +97,7 @@ export let viewTransitionCancelableChildren: null | Array<
   Instance | string | Props,
 > = null; // tupled array where each entry is [instance: Instance, oldName: string, props: Props]
 
+// 优化过渡的功能，避免不在视窗内的子元素产生过渡
 export function pushViewTransitionCancelableScope(): null | Array<
   Instance | string | Props,
 > {
@@ -112,6 +114,8 @@ export function popViewTransitionCancelableScope(
 
 let viewTransitionHostInstanceIdx = 0;
 
+
+// 为过渡递归应用样式和name 返回是否在视窗内
 function applyViewTransitionToHostInstances(
   fiber: Fiber,
   name: string,
@@ -120,6 +124,7 @@ function applyViewTransitionToHostInstances(
   stopAtNestedViewTransitions: boolean,
 ): boolean {
   viewTransitionHostInstanceIdx = 0;
+  // 为过渡递归应用样式和name 返回是否在视窗内
   const inViewport = applyViewTransitionToHostInstancesRecursive(
     fiber.child,
     name,
@@ -127,6 +132,7 @@ function applyViewTransitionToHostInstances(
     collectMeasurements,
     stopAtNestedViewTransitions,
   );
+  // 性能追踪
   if (enableProfilerTimer && enableComponentPerformanceTrack && inViewport) {
     if (fiber._debugTask != null) {
       trackAnimatingTask(fiber._debugTask);
@@ -135,21 +141,26 @@ function applyViewTransitionToHostInstances(
   return inViewport;
 }
 
+// 递归处理节点的过渡样式和名称
 function applyViewTransitionToHostInstancesRecursive(
   child: null | Fiber,
   name: string,
   className: ?string,
+  // 收集 DOM 修改前的位置和尺寸，用于 Commit 后比较布局变化
   collectMeasurements: null | Array<InstanceMeasurement>,
+  // 是否在遇到嵌套 ViewTransition 时停止遍历，避免外层处理内层负责的节点
   stopAtNestedViewTransitions: boolean,
 ): boolean {
   // $FlowFixMe[constant-condition]
   if (!supportsMutation) {
+    // 默认false不进去
     if (enableViewTransitionForPersistenceMode) {
       while (child !== null) {
         if (child.tag === HostComponent) {
           const instance: Instance = child.stateNode;
           // TODO: calculate whether component is in viewport
           shouldStartViewTransition = true;
+          // 为过渡组件应用样式和名称
           applyViewTransitionName(
             instance,
             viewTransitionHostInstanceIdx === 0
@@ -157,6 +168,7 @@ function applyViewTransitionToHostInstancesRecursive(
               : name + '_' + viewTransitionHostInstanceIdx,
             className,
           );
+          // id自增
           viewTransitionHostInstanceIdx++;
         } else if (
           child.tag === OffscreenComponent &&
@@ -170,6 +182,7 @@ function applyViewTransitionToHostInstancesRecursive(
           // Skip any nested view transitions for updates since in that case the
           // inner most one is the one that handles the update.
         } else {
+          // 递归调用自身，遍历child的子节点
           applyViewTransitionToHostInstancesRecursive(
             child.child,
             name,
@@ -186,21 +199,31 @@ function applyViewTransitionToHostInstancesRecursive(
     }
   }
   let inViewport = false;
+  // 如果有子元素
   while (child !== null) {
+    // 那就说明这个过渡在最上层 根元素的过渡
     if (child.tag === HostComponent) {
+      // 获取react实例
       const instance: Instance = child.stateNode;
+      // 如果要收集位置大小信息
       if (collectMeasurements !== null) {
+        // 获取InstanceMeasurement信息，即尺寸大小窗口位置啥的
         const measurement = measureInstance(instance);
+        // 推入信息栈
         collectMeasurements.push(measurement);
+        // 如果在视窗内
         if (wasInstanceInViewport(measurement)) {
           inViewport = true;
         }
       } else if (!inViewport) {
+        // 检查是否在视窗内，不收集位置信息
         if (wasInstanceInViewport(measureInstance(instance))) {
           inViewport = true;
         }
       }
+      // 开始过渡
       shouldStartViewTransition = true;
+      // 应用样式和名称
       applyViewTransitionName(
         instance,
         viewTransitionHostInstanceIdx === 0
@@ -210,19 +233,23 @@ function applyViewTransitionToHostInstancesRecursive(
             name + '_' + viewTransitionHostInstanceIdx,
         className,
       );
+      // id递增
       viewTransitionHostInstanceIdx++;
     } else if (
+      // 屏幕外的过渡不用渲染
       child.tag === OffscreenComponent &&
       child.memoizedState !== null
     ) {
       // Skip any hidden subtrees. They were or are effectively not there.
     } else if (
+      // 屏幕内的过渡 但是嵌套过渡不渲染的话
       child.tag === ViewTransitionComponent &&
       stopAtNestedViewTransitions
     ) {
       // Skip any nested view transitions for updates since in that case the
       // inner most one is the one that handles the update.
     } else {
+      // 递归调用自身
       if (
         applyViewTransitionToHostInstancesRecursive(
           child.child,
@@ -235,11 +262,13 @@ function applyViewTransitionToHostInstancesRecursive(
         inViewport = true;
       }
     }
+    // 切换到兄弟节点
     child = child.sibling;
   }
   return inViewport;
 }
 
+// 递归重置样式名称
 function restoreViewTransitionOnHostInstances(
   child: null | Fiber,
   stopAtNestedViewTransitions: boolean,
@@ -251,6 +280,7 @@ function restoreViewTransitionOnHostInstances(
   while (child !== null) {
     if (child.tag === HostComponent) {
       const instance: Instance = child.stateNode;
+      // 重置过渡样式名称
       restoreViewTransitionName(instance, child.memoizedProps);
     } else if (
       child.tag === OffscreenComponent &&
@@ -273,23 +303,30 @@ function restoreViewTransitionOnHostInstances(
   }
 }
 
+// 深度遍历节点  找ViewTransition
 function commitAppearingPairViewTransitions(placement: Fiber): void {
+  // 如果 placement 子树中不存在显式命名的 ViewTransition
   if ((placement.subtreeFlags & ViewTransitionNamedStatic) === NoFlags) {
     // This has no named view transitions in its subtree.
     return;
   }
   let child = placement.child;
   while (child !== null) {
+    // 视窗外不用管
     if (child.tag === OffscreenComponent && child.memoizedState !== null) {
       // This tree was already hidden so we skip it.
     } else {
+      // 深度遍历模式 遍历自身子节点
       commitAppearingPairViewTransitions(child);
+      // 是ViewTransition节点
       if (
         child.tag === ViewTransitionComponent &&
         (child.flags & ViewTransitionNamedStatic) !== NoFlags
       ) {
         const instance: ViewTransitionState = child.stateNode;
+        // 如果有匹配节点
         if (instance.paired) {
+          // 检查name和className
           const props: ViewTransitionProps = child.memoizedProps;
           if (props.name == null || props.name === 'auto') {
             throw new Error(
@@ -304,6 +341,7 @@ function commitAppearingPairViewTransitions(placement: Fiber): void {
           if (className !== 'none') {
             // We found a new appearing view transition with the same name as this deletion.
             // We'll transition between them.
+            // 应用name和classname
             const inViewport = applyViewTransitionToHostInstances(
               child,
               name,
@@ -311,6 +349,7 @@ function commitAppearingPairViewTransitions(placement: Fiber): void {
               null,
               false,
             );
+            // 不在视窗内恢复
             if (!inViewport) {
               // This boundary is exiting within the viewport but is going to leave the viewport.
               // Instead, we treat this as an exit of the previous entry by reverting the new name.
@@ -479,19 +518,27 @@ function restoreParentEnterOrExitViewTransitions(parent: Fiber): void {
   }
 }
 
+
+// 为视窗内的所有viewTransation应用过渡name和classname
 export function commitEnterViewTransitions(
   placement: Fiber,
+  // 手势过渡普通过渡
   gesture: boolean,
 ): void {
+  // 如果是过渡组件
   if (placement.tag === ViewTransitionComponent) {
+    // 获取state和props
     const state: ViewTransitionState = placement.stateNode;
     const props: ViewTransitionProps = placement.memoizedProps;
+    // 获取组件名称
     const name = getViewTransitionName(props, state);
+    // 获取样式名称
     const className: ?string = getViewTransitionClassName(
       props.default,
       state.paired ? props.share : props.enter,
     );
     if (className !== 'none') {
+      // 为过渡递归应用样式和name 返回是否在视窗内
       const inViewport = applyViewTransitionToHostInstances(
         placement,
         name,
@@ -503,15 +550,19 @@ export function commitEnterViewTransitions(
         // TODO: If this was part of a pair we will still run the onShare callback.
         // Revert the transition names. This boundary is not in the viewport
         // so we won't bother animating it.
+        // 递归重置样式名称
         restoreViewTransitionOnHostInstances(placement.child, false);
         // TODO: Should we still visit the children in case a named one was in the viewport?
       } else {
+        // 深度遍历寻找viewTransation引用name和classname
         commitAppearingPairViewTransitions(placement);
-
+        // 如果没有配对节点
         if (!state.paired) {
           if (gesture) {
+            // 创建一个手势过渡
             scheduleGestureTransitionEvent(placement, props.onGestureEnter);
           } else {
+            // 创建一个普通视图过渡
             scheduleViewTransitionEvent(placement, props.onEnter);
           }
           if (enableViewTransitionParentEnterExit) {
@@ -520,15 +571,19 @@ export function commitEnterViewTransitions(
         }
       }
     } else {
+      // 深度遍历节点  找ViewTransition
       commitAppearingPairViewTransitions(placement);
     }
+  // 子树里有没有 ViewTransition
   } else if ((placement.subtreeFlags & ViewTransitionStatic) !== NoFlags) {
     let child = placement.child;
     while (child !== null) {
+      // 应用过渡name和classname
       commitEnterViewTransitions(child, gesture);
       child = child.sibling;
     }
   } else {
+    // 深度遍历节点  找ViewTransition
     commitAppearingPairViewTransitions(placement);
   }
 }
@@ -1014,6 +1069,8 @@ function measureViewTransitionHostInstancesRecursive(
   return inViewport;
 }
 
+// 测量 ViewTransition 更新前后的 DOM，
+// 判断位置、尺寸或数量是否变化，以及是否需要播放更新动画。
 export function measureUpdateViewTransition(
   current: Fiber,
   finishedWork: Fiber,

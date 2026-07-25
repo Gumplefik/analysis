@@ -553,7 +553,7 @@ function performWorkOnRootViaSchedulerTask(
 ): RenderTaskFn | null {
   // This is the entry point for concurrent tasks scheduled via Scheduler (and
   // postTask, in the future).
-
+  // 性能追踪相关
   if (enableProfilerTimer && enableProfilerNestedUpdatePhase) {
     resetNestedUpdateFlag();
   }
@@ -563,7 +563,7 @@ function performWorkOnRootViaSchedulerTask(
     // event when logging events.
     trackSchedulerEvent();
   }
-
+  // 如果当前有effect要处理的话，等待执行后再说
   if (hasPendingCommitEffects()) {
     // We are currently in the middle of an async committing (such as a View Transition).
     // We could force these to flush eagerly but it's better to defer any work until
@@ -580,6 +580,7 @@ function performWorkOnRootViaSchedulerTask(
   // Flush any pending passive effects before deciding which lanes to work on,
   // in case they schedule additional work.
   const originalCallbackNode = root.callbackNode;
+  // 执行晚上次剩下的任务 主要是effect相关
   const didFlushPassiveEffects = flushPendingEffectsDelayed();
   if (didFlushPassiveEffects) {
     // Something in the passive effect phase may have canceled the current task.

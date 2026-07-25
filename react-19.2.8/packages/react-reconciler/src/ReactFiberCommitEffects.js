@@ -246,6 +246,7 @@ export function commitHookEffectListMount(
   }
 }
 
+// 找到effect更新队列上flags一样的effect，执行destory 
 export function commitHookEffectListUnmount(
   flags: HookFlags,
   finishedWork: Fiber,
@@ -907,6 +908,7 @@ export function safelyDetachRef(
   }
 }
 
+// 就是调用清理函数 effect返回的回调函数之类的
 function safelyCallDestroy(
   current: Fiber,
   nearestMountedAncestor: Fiber | null,

@@ -1054,6 +1054,8 @@ export function insertDestinationClones(
   }
 }
 
+// 目前啥都没有干，白循环了一波 还要todo
+// 这又是一个递归
 function measureExitViewTransitions(placement: Fiber): void {
   if (placement.tag === ViewTransitionComponent) {
     // const state: ViewTransitionState = placement.stateNode;
@@ -1075,6 +1077,7 @@ function measureExitViewTransitions(placement: Fiber): void {
   }
 }
 
+// 递归找到要更新的节点 执行effect清理 这里主要手势场景，针对useInsertionEffect之类的
 function recursivelyRestoreNew(
   finishedWork: Fiber,
   nearestMountedAncestor: Fiber,
@@ -1098,6 +1101,7 @@ function recursivelyRestoreNew(
         // Insertion Effects are mounted temporarily during the rendering of the snapshot.
         // We have now already takes a snapshot of the inserted state so we can now unmount
         // them to get back into the original state before starting the animation.
+        // 清理effect
         commitHookEffectListUnmount(
           HookInsertion | HookHasEffect,
           finishedWork,
@@ -1110,14 +1114,16 @@ function recursivelyRestoreNew(
 }
 
 function recursivelyApplyViewTransitions(parentFiber: Fiber) {
+  // 处理界面后退场景
   const deletions = parentFiber.deletions;
   if (deletions !== null) {
     for (let i = 0; i < deletions.length; i++) {
       const childToDelete = deletions[i];
+      // 为每个元素应用过渡name和classname
       commitEnterViewTransitions(childToDelete, true);
     }
   }
-
+  // 如果是新增节点 或者子节点有更新
   if (
     parentFiber.alternate === null ||
     (parentFiber.subtreeFlags & MutationMask) !== NoFlags
@@ -1127,7 +1133,9 @@ function recursivelyApplyViewTransitions(parentFiber: Fiber) {
     while (child !== null) {
       const current = child.alternate;
       if (current === null) {
+        // 目前白循环一波，啥事没干
         measureExitViewTransitions(child);
+        // 清理一些effect 执行effect回调
         recursivelyRestoreNew(child, parentFiber);
       } else {
         applyViewTransitionsOnFiber(child, current);
@@ -1138,10 +1146,12 @@ function recursivelyApplyViewTransitions(parentFiber: Fiber) {
     // Nothing has changed in this subtree, but the parent may have still affected
     // its size and position. We need to measure the old and new state to see if
     // we should animate its size and position.
+    // 检查有没有需要变更的尺寸位置啥的，看要不奥应用动画
     measureNestedViewTransitions(parentFiber, true);
   }
 }
 
+// 对比新旧 Fiber，处理当前节点及其子树的手势 ViewTransition
 function applyViewTransitionsOnFiber(finishedWork: Fiber, current: Fiber) {
   // The effect flag should be checked *after* we refine the type of fiber,
   // because the fiber tag is more specific. An exception is any flag related
@@ -1152,19 +1162,30 @@ function applyViewTransitionsOnFiber(finishedWork: Fiber, current: Fiber) {
       break;
     }
     case OffscreenComponent: {
+      // 获取更新后的 Offscreen 状态：
+      // null 表示显示，非 null 表示隐藏
       const newState: OffscreenState | null = finishedWork.memoizedState;
+      // 判断更新后是否隐藏
       const isHidden = newState !== null;
+      // 判断更新前是否隐藏
       const wasHidden = current.memoizedState !== null;
+      // 更新后处于显示状态
       if (!isHidden) {
+         // 更新前隐藏，更新后显示
         if (wasHidden) {
           measureExitViewTransitions(finishedWork);
+          // 执行effect回调
+          // 清理为生成目标页面快照而临时挂载的 useInsertionEffect
           recursivelyRestoreNew(finishedWork, finishedWork);
         } else {
+          // 递归更新name和样式
+          // 更新前后都显示，继续处理子树中的新增、删除和更新
           recursivelyApplyViewTransitions(finishedWork);
         }
       } else {
         if (!wasHidden) {
           // Was previously mounted as visible but is now hidden.
+          // 更新样式 隐藏子树
           commitEnterViewTransitions(current, true);
         }
       }
@@ -1174,43 +1195,55 @@ function applyViewTransitionsOnFiber(finishedWork: Fiber, current: Fiber) {
       const prevContextChanged = viewTransitionContextChanged;
       const prevCancelableChildren = pushViewTransitionCancelableScope();
       viewTransitionContextChanged = false;
+      // 递归更新name和样式
+      // 递归处理内部的新增、删除、更新和显隐变化
       recursivelyApplyViewTransitions(finishedWork);
-
+      // 如果子树变化影响了当前 ViewTransition 的布局，
       if (viewTransitionContextChanged) {
         finishedWork.flags |= Update;
       }
-
+      // 测量更新前后的 DOM 位置、尺寸和数量，
+      // true 表示按照手势过渡的反向新旧关系进行测量
       const inViewport = measureUpdateViewTransition(
         current,
         finishedWork,
         true,
       );
 
+      // 如果不需要更新或者不在视窗内
       if ((finishedWork.flags & Update) === NoFlags || !inViewport) {
         // If this boundary didn't update, then we may be able to cancel its children.
         // We bubble them up to the parent set to be determined later if we can cancel.
         // Similarly, if old and new state was outside the viewport, we can skip it
         // even if it did update.
+        // 如果外层没有可取消列表，
+        // 保留当前列表，使其继续向更外层传递
         if (prevCancelableChildren === null) {
           // Bubbling up this whole set to the parent.
         } else {
           // Merge with parent set.
           // $FlowFixMe[method-unbinding]
+          // 将当前边界收集到的可取消子过渡合并到外层列表
           prevCancelableChildren.push.apply(
             prevCancelableChildren,
             viewTransitionCancelableChildren,
           );
+          // 恢复外层的可取消列表
           popViewTransitionCancelableScope(prevCancelableChildren);
         }
         // TODO: If this doesn't end up canceled, because a parent animates,
         // then we should probably issue an event since this instance is part of it.
       } else {
         const props: ViewTransitionProps = finishedWork.memoizedProps;
+        // 当前边界需要播放更新动画，
+        // 将 onGestureUpdate 回调加入待执行队列
         scheduleGestureTransitionEvent(finishedWork, props.onGestureUpdate);
         // If this boundary did update, we cannot cancel its children so those are dropped.
+        // 当前边界自己需要动画，因此子过渡不能直接取消。
+        // 丢弃当前范围的候选列表并恢复外层列表
         popViewTransitionCancelableScope(prevCancelableChildren);
       }
-
+      // 如果影响到了父级布局
       if ((finishedWork.flags & AffectedParentLayout) !== NoFlags) {
         // This boundary changed size in a way that may have caused its parent to
         // relayout. We need to bubble this information up to the parent.
@@ -1225,6 +1258,7 @@ function applyViewTransitionsOnFiber(finishedWork: Fiber, current: Fiber) {
       break;
     }
     default: {
+      // 递归检查
       recursivelyApplyViewTransitions(finishedWork);
       break;
     }
@@ -1238,11 +1272,13 @@ export function applyDepartureTransitions(
 ): void {
   // First measure and apply view-transition-names to the "new" states.
   viewTransitionContextChanged = false;
+  // 清空过渡忽略子元素的变量
   pushViewTransitionCancelableScope();
-
+  // 递归提交过渡变更 应用样式和name
   recursivelyApplyViewTransitions(finishedWork);
 
   // Then remove the clones.
+  // 移除clone节点
   const rootClone = root.gestureClone;
   if (rootClone !== null) {
     root.gestureClone = null;

@@ -968,11 +968,13 @@ export function scheduleViewTransitionEvent(
     types: Array<string>,
   ) => void | (() => void),
 ): void {
+  // 开启viewTransation
   if (enableViewTransition) {
     if (callback != null) {
       const state: ViewTransitionState = fiber.stateNode;
       let instance = state.ref;
       if (instance === null) {
+        // 创建过渡对象，更新ref
         instance = state.ref = createViewTransitionInstance(
           getViewTransitionName(fiber.memoizedProps, state),
         );
@@ -980,11 +982,13 @@ export function scheduleViewTransitionEvent(
       if (pendingViewTransitionEvents === null) {
         pendingViewTransitionEvents = [];
       }
+      // 计划回调推入
       pendingViewTransitionEvents.push(callback.bind(null, instance));
     }
   }
 }
 
+// 计算创建一个viewTransation实例
 export function scheduleGestureTransitionEvent(
   fiber: Fiber,
   callback: ?(
@@ -994,13 +998,17 @@ export function scheduleGestureTransitionEvent(
     types: Array<string>,
   ) => void | (() => void),
 ): void {
+  // 开启了手势过渡
   if (enableGestureTransition) {
     if (callback != null) {
+      // 当前在处理的手势
       const applyingGesture = pendingEffectsRoot.pendingGestures;
       if (applyingGesture !== null) {
+        // 获取react实例
         const state: ViewTransitionState = fiber.stateNode;
         let instance = state.ref;
         if (instance === null) {
+          // 创建个viewTransation对象 更新ref 
           instance = state.ref = createViewTransitionInstance(
             getViewTransitionName(fiber.memoizedProps, state),
           );
@@ -1013,6 +1021,7 @@ export function scheduleGestureTransitionEvent(
         if (pendingViewTransitionEvents === null) {
           pendingViewTransitionEvents = [];
         }
+        // 推入回调栈
         pendingViewTransitionEvents.push(
           callback.bind(null, timeline, options, instance),
         );
@@ -4585,31 +4594,40 @@ function applyGestureOnRoot(
 }
 
 function flushGestureMutations(): void {
+  // 没开手势过渡和还没到pending状态不需要执行
   if (!enableGestureTransition) {
     return;
   }
   if (pendingEffectsStatus !== PENDING_GESTURE_MUTATION_PHASE) {
     return;
   }
+  // 重置状态
   pendingEffectsStatus = NO_PENDING_EFFECTS;
   const root = pendingEffectsRoot;
   const finishedWork = pendingFinishedWork;
-
+  // 获取Transition对象
   const prevTransition = ReactSharedInternals.T;
+  // 清空引用
   ReactSharedInternals.T = null;
+  // 获取update优先级
   const previousPriority = getCurrentUpdatePriority();
+  // 切换渲染优先级为离散事件
+  // 主要根据要做的事情觉得设置什么优先级
   setCurrentUpdatePriority(DiscreteEventPriority);
   const prevExecutionContext = executionContext;
+  // 切换状态到commit
   executionContext |= CommitContext;
   try {
+    // 提交更改的fiber，更新到dom树上
     applyDepartureTransitions(root, finishedWork);
   } finally {
     // Reset the priority to the previous non-sync value.
+    // 恢复现场
     executionContext = prevExecutionContext;
     setCurrentUpdatePriority(previousPriority);
     ReactSharedInternals.T = prevTransition;
   }
-
+  // 性能追踪
   if (enableProfilerTimer && enableComponentPerformanceTrack) {
     recordCommitEndTime();
     logApplyGesturePhase(
@@ -4618,7 +4636,7 @@ function flushGestureMutations(): void {
       animatingTask,
     );
   }
-
+  // 切换effect状态，过渡完成开始处理动画了
   pendingEffectsStatus = PENDING_GESTURE_ANIMATION_PHASE;
 }
 
@@ -4751,8 +4769,10 @@ export function flushPendingEffectsDelayed(): boolean {
   return flushPendingEffects();
 }
 
+// 清空任务，执行所所有剩下的effect
 export function flushPendingEffects(): boolean {
   // Returns whether passive effects were flushed.
+  // 关闭过渡
   if (enableViewTransition && pendingViewTransition !== null) {
     // If we forced a flush before the View Transition full started then we skip it.
     // This ensures that we're not running a partial animation.
@@ -4771,12 +4791,18 @@ export function flushPendingEffects(): boolean {
     pendingViewTransition = null;
     pendingDelayedCommitReason = ABORTED_VIEW_TRANSITION_COMMIT;
   }
+  // 提交手势相关dom修改
   flushGestureMutations();
+  // 提交手势动画
   flushGestureAnimations();
+  // 插入更新删除dom
   flushMutationEffects();
+  // 执行useEffect ref 相关内容
   flushLayoutEffects();
+  // 处理commit阶段产生的工作
   // Skip flushAfterMutation if we're forcing this early.
   flushSpawnedWork();
+  // 执行effect
   return flushPassiveEffects();
 }
 

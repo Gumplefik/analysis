@@ -25,6 +25,7 @@ export type ViewTransitionState = {
 
 let globalClientIdCounter: number = 0;
 
+// 创建个viewTransation名称
 export function getViewTransitionName(
   props: ViewTransitionProps,
   instance: ViewTransitionState,

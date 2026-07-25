@@ -1499,6 +1499,7 @@ function countClientRects(rects: Array<ClientRect>): number {
     return 1;
   }
   // Count non-zero rects.
+  // 无宽高节点不计算在内
   let count = 0;
   for (let i = 0; i < rects.length; i++) {
     const rect = rects[i];
@@ -1509,6 +1510,7 @@ function countClientRects(rects: Array<ClientRect>): number {
   return count;
 }
 
+// 主要为过渡节点应用样式和名称
 export function applyViewTransitionName(
   instance: Instance,
   name: string,
@@ -1518,16 +1520,21 @@ export function applyViewTransitionName(
   // If the name isn't valid CSS identifier, base64 encode the name instead.
   // This doesn't let you select it in custom CSS selectors but it does work in current
   // browsers.
+  // 有转义字符就切换成base64
   const escapedName =
     CSS.escape(name) !== name ? 'r-' + btoa(name).replace(/=/g, '') : name;
   // $FlowFixMe[prop-missing]
+  // 保存名称
   instance.style.viewTransitionName = escapedName;
   if (className != null) {
     // $FlowFixMe[prop-missing]
+    // 保存样式名称
     instance.style.viewTransitionClass = className;
   }
+  // 获取已有的样式
   const computedStyle = getComputedStyle(instance);
   if (computedStyle.display === 'inline') {
+    // 处理内核兼容场景
     // WebKit has a bug where assigning a name to display: inline elements errors
     // if they have display: block children. We try to work around this bug in the
     // simple case by converting it automatically to display: inline-block.
@@ -1535,6 +1542,7 @@ export function applyViewTransitionName(
     const rects = instance.getClientRects();
     if (
       // $FlowFixMe[incompatible-type]
+      // 如果单节点
       countClientRects(rects) === 1
     ) {
       // If the instance has a single client rect, that means that it can be
@@ -1549,6 +1557,7 @@ export function applyViewTransitionName(
       // Margin doesn't apply to inline so should be zero. However, padding top/bottom
       // applies to inline-block positioning which we can offset by setting the margin
       // to the negative padding to get it back into original position.
+      // 扩充容器
       style.marginTop = '-' + computedStyle.paddingTop;
       style.marginBottom = '-' + computedStyle.paddingBottom;
     } else {
@@ -1559,6 +1568,7 @@ export function applyViewTransitionName(
   }
 }
 
+// 重置过渡的样式名称
 export function restoreViewTransitionName(
   instance: Instance,
   props: Props,
@@ -1973,11 +1983,23 @@ export function removeRootViewTransitionClone(
   containerInstance.style.viewTransitionName = 'root';
 }
 
+// ViewTransition 对 DOM 节点的测量结果，用于比较 Commit 前后的布局变化。
 export type InstanceMeasurement = {
+  // 节点相对浏览器可视窗口（viewport）的位置和尺寸，不是相对父元素，单位为 CSS 像素：
+  // x / left：从视口左边缘到节点左边缘的横向距离，通常 x 与 left 相同。
+  // y / top：从视口上边缘到节点上边缘的纵向距离，通常 y 与 top 相同。
+  // right：从视口左边缘到节点右边缘的位置，通常等于 left + width。
+  // bottom：从视口上边缘到节点下边缘的位置，通常等于 top + height。
+  // width：节点边界矩形的宽度。
+  // height：节点边界矩形的高度。
+  // 节点位于视口左侧或上方时，left、top、x、y 可以是负数。
   rect: ClientRect | DOMRect,
-  abs: boolean, // is absolutely positioned
-  clip: boolean, // is a clipping parent
-  view: boolean, // is in viewport bounds
+  // 是否为 absolute 或 fixed 定位；这类节点通常不会影响父节点的正常布局。
+  abs: boolean,
+  // 是否具有裁剪效果；子节点执行动画时，裁剪父节点可能也需要参与动画。
+  clip: boolean,
+  // 节点的矩形区域是否与当前浏览器视口相交。
+  view: boolean,
 };
 
 function createMeasurement(
@@ -2951,6 +2973,7 @@ ViewTransitionPseudoElement.prototype.getComputedStyle = function (
   return getComputedStyle(scope, selector);
 };
 
+// 创建个配置对象
 export function createViewTransitionInstance(
   name: string,
 ): ViewTransitionInstance {
