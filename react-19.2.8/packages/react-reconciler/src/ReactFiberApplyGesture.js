@@ -1138,6 +1138,7 @@ function recursivelyApplyViewTransitions(parentFiber: Fiber) {
         // 清理一些effect 执行effect回调
         recursivelyRestoreNew(child, parentFiber);
       } else {
+        // 应用过渡样式
         applyViewTransitionsOnFiber(child, current);
       }
       child = child.sibling;
@@ -1266,6 +1267,7 @@ function applyViewTransitionsOnFiber(finishedWork: Fiber, current: Fiber) {
 }
 
 // Revert insertions and apply view transition names to the "new" (current) state.
+// 应用过渡特效
 export function applyDepartureTransitions(
   root: FiberRoot,
   finishedWork: Fiber,
@@ -1274,17 +1276,19 @@ export function applyDepartureTransitions(
   viewTransitionContextChanged = false;
   // 清空过渡忽略子元素的变量
   pushViewTransitionCancelableScope();
-  // 递归提交过渡变更 应用样式和name
+  // 递归提交过渡变更 应用样式和name 此流程过于冗长，涉及多个递归流程
   recursivelyApplyViewTransitions(finishedWork);
 
   // Then remove the clones.
   // 移除clone节点
   const rootClone = root.gestureClone;
+  // 清空备用节点
   if (rootClone !== null) {
     root.gestureClone = null;
+    // 移除备用节点视图 dom更新
     removeRootViewTransitionClone(root.containerInfo, rootClone);
   }
-
+  // 没有视图变更
   if (!viewTransitionContextChanged) {
     // If we didn't leak any resizing out to the root, we don't have to transition
     // the root itself. This means that we can now safely cancel any cancellations
@@ -1301,9 +1305,12 @@ export function applyDepartureTransitions(
     }
     // We also cancel the root itself. First we restore the name to the documentElement
     // and then we cancel it.
+    // 设置过渡样式
     restoreRootViewTransitionName(root.containerInfo);
+    // 避免视图事件触发
     cancelRootViewTransitionName(root.containerInfo);
   }
+  // 清空候选节点
   popViewTransitionCancelableScope(null);
 }
 

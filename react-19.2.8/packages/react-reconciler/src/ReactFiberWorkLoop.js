@@ -4619,12 +4619,15 @@ function flushGestureMutations(): void {
   executionContext |= CommitContext;
   try {
     // 提交更改的fiber，更新到dom树上
+    // 更新过渡
     applyDepartureTransitions(root, finishedWork);
   } finally {
     // Reset the priority to the previous non-sync value.
     // 恢复现场
     executionContext = prevExecutionContext;
+    // 恢复更新优先级
     setCurrentUpdatePriority(previousPriority);
+    // 恢复过渡对象
     ReactSharedInternals.T = prevTransition;
   }
   // 性能追踪
