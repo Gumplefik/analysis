@@ -1342,8 +1342,10 @@ function recursivelyRestoreViewTransitions(parentFiber: Fiber) {
 }
 
 function restoreViewTransitionsOnFiber(finishedWork: Fiber) {
+  // 如果没有双缓存节点 基本就是初始化或者退出场景
   const current = finishedWork.alternate;
   if (current === null) {
+    // 递归处理paired和host组件样式
     restoreEnterOrExitViewTransitions(finishedWork);
     return;
   }
@@ -1383,10 +1385,13 @@ function restoreViewTransitionsOnFiber(finishedWork: Fiber) {
 }
 
 // Revert transition names and start/adjust animations on the started View Transition.
+// 开启手势动画 主要还是恢复样式和清理样式
 export function startGestureAnimations(
   root: FiberRoot,
   finishedWork: Fiber,
 ): void {
+  // 递归处理paired和恢复host组件样式
   restoreViewTransitionsOnFiber(finishedWork);
+  // 清除根元素上的viewTransitionName
   restoreRootViewTransitionName(root.containerInfo);
 }

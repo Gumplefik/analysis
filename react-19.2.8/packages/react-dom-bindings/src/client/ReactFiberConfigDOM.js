@@ -1715,6 +1715,7 @@ export function cancelRootViewTransitionName(rootContainer: Container): void {
   }
 }
 
+// 清空根元素的viewTransitionName
 export function restoreRootViewTransitionName(rootContainer: Container): void {
   let containerInstance: Instance;
   if (rootContainer.nodeType === DOCUMENT_NODE) {

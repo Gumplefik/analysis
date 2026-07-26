@@ -269,6 +269,7 @@ function applyViewTransitionToHostInstancesRecursive(
 }
 
 // 递归重置样式名称
+// 目前主要重置host组件的样式
 function restoreViewTransitionOnHostInstances(
   child: null | Fiber,
   stopAtNestedViewTransitions: boolean,
@@ -294,6 +295,7 @@ function restoreViewTransitionOnHostInstances(
       // Skip any nested view transitions for updates since in that case the
       // inner most one is the one that handles the update.
     } else {
+      // 递归遍历
       restoreViewTransitionOnHostInstances(
         child.child,
         stopAtNestedViewTransitions,
@@ -491,12 +493,16 @@ export function commitParentExitViewTransitions(
   }
 }
 
+// 递归子节点里的过渡节点处理样式
 function restoreParentEnterOrExitViewTransitions(parent: Fiber): void {
+  // 获取子节点
   let child = parent.child;
   while (child !== null) {
+    // 隐藏节点忽略
     if (child.tag === OffscreenComponent && child.memoizedState !== null) {
       // Skip hidden subtrees.
     } else if (child.tag === ViewTransitionComponent) {
+      // 获取props和class
       const props: ViewTransitionProps = child.memoizedProps;
       const hasParentClass =
         props.parentEnter !== undefined || props.parentExit !== undefined;
@@ -506,12 +512,17 @@ function restoreParentEnterOrExitViewTransitions(parent: Fiber): void {
         props.onGestureParentEnter != null ||
         props.onGestureParentExit != null;
       if (hasParentClass) {
+        // 递归重置样式 目前的主功能是重置host节点的样式
         restoreViewTransitionOnHostInstances(child.child, false);
       }
       if (hasParentClass || hasParentHandler) {
+        // 递归设置样式和handle 递归遍历
         restoreParentEnterOrExitViewTransitions(child);
       }
+
+      // 如果子节点里还有vivwtransation节点，就继续遍历
     } else if ((child.subtreeFlags & ViewTransitionStaticParent) !== NoFlags) {
+      // 递归遍历
       restoreParentEnterOrExitViewTransitions(child);
     }
     child = child.sibling;
@@ -803,47 +814,66 @@ export function commitNestedViewTransitions(changedParent: Fiber): void {
 }
 
 function restorePairedViewTransitions(parent: Fiber): void {
+  // 如果没有子过渡节点就退出 一看就是递归前置条件
   if ((parent.subtreeFlags & ViewTransitionNamedStatic) === NoFlags) {
     // This has no named view transitions in its subtree.
     return;
   }
   let child = parent.child;
+  // 日常递归
   while (child !== null) {
+    // 屏幕外忽略
     if (child.tag === OffscreenComponent && child.memoizedState !== null) {
       // This tree was already hidden so we skip it.
     } else {
       if (
+        // 有已命名的过渡节点
         child.tag === ViewTransitionComponent &&
         (child.flags & ViewTransitionNamedStatic) !== NoFlags
       ) {
+        // 获取react实例
         const instance: ViewTransitionState = child.stateNode;
+        // 重置配对节点
         if (instance.paired !== null) {
           instance.paired = null;
+          // 递归继续处理子节点过渡节点
           restoreViewTransitionOnHostInstances(child.child, false);
         }
       }
+      // 递归自身子节点
       restorePairedViewTransitions(child);
     }
     child = child.sibling;
   }
 }
 
+// 递归遍历处理paired和host组件样式
 export function restoreEnterOrExitViewTransitions(fiber: Fiber): void {
+  // 如果是viewTransation节点
   if (fiber.tag === ViewTransitionComponent) {
+    // 获取react实例
     const instance: ViewTransitionState = fiber.stateNode;
+    // 清空备份
     instance.paired = null;
+    // 递归重置子节点的样式名称
     restoreViewTransitionOnHostInstances(fiber.child, false);
+    // 是否允许随父级一起执行过渡表更
     if (enableViewTransitionParentEnterExit) {
+      // 递归处理子过渡节点
       restoreParentEnterOrExitViewTransitions(fiber);
     }
+    // 递归清空paired节点 还有host组件的样式处理
     restorePairedViewTransitions(fiber);
+    // 如果子节点有过渡节点
   } else if ((fiber.subtreeFlags & ViewTransitionStatic) !== NoFlags) {
     let child = fiber.child;
+    // 继续遍历
     while (child !== null) {
       restoreEnterOrExitViewTransitions(child);
       child = child.sibling;
     }
   } else {
+    // 继续遍历
     restorePairedViewTransitions(fiber);
   }
 }

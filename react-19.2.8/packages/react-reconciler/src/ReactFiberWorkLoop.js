@@ -4643,19 +4643,22 @@ function flushGestureMutations(): void {
   pendingEffectsStatus = PENDING_GESTURE_ANIMATION_PHASE;
 }
 
+// 处理手势动画的收尾工作，恢复样式之类的
 function flushGestureAnimations(): void {
   if (!enableGestureTransition) {
     return;
   }
   // If we get canceled before we start we might not have applied
   // mutations yet. We need to apply them first.
+  // 提交过渡相关的样式
   flushGestureMutations();
+  // 如果还没到pending状态不继续执行
   if (pendingEffectsStatus !== PENDING_GESTURE_ANIMATION_PHASE) {
     return;
   }
-
+  // 获取当前要执行的任务
   const lanes = pendingEffectsLanes;
-
+  // 如果开启性能检查和跟踪
   if (enableProfilerTimer && enableComponentPerformanceTrack) {
     const startViewTransitionStartTime = commitEndTime;
     // Update the new commitEndTime to when we started the animation.
@@ -4671,34 +4674,46 @@ function flushGestureAnimations(): void {
     }
   }
 
+  // 切换effect状态为无提交effect
   pendingEffectsStatus = NO_PENDING_EFFECTS;
+  // 获取正在执行coomit effect的fiber树
   const root = pendingEffectsRoot;
+  // 获取等待commit的fiber树
   const finishedWork = pendingFinishedWork;
+  // 清空公共变量
   pendingEffectsRoot = null as any; // Clear for GC purposes.
   pendingFinishedWork = null as any; // Clear for GC purposes.
   pendingEffectsLanes = NoLanes;
 
   pendingViewTransition = null; // The view transition has now fully started.
 
+  // 过去之前的过渡对象
   const prevTransition = ReactSharedInternals.T;
   ReactSharedInternals.T = null;
+  // 获取当前更新的优先级 临时保存 便于恢复
   const previousPriority = getCurrentUpdatePriority();
+  // 设置成离散事件优先级
   setCurrentUpdatePriority(DiscreteEventPriority);
+  // 获取之前的上下文
   const prevExecutionContext = executionContext;
+  // 调整阶段到commit
   executionContext |= CommitContext;
   try {
+    // 开始手势过渡动画 恢复root组件样式清理过渡样式
     startGestureAnimations(root, finishedWork);
   } finally {
     // Reset the priority to the previous non-sync value.
+    // 恢复之前的执行对象和优先级
     executionContext = prevExecutionContext;
     setCurrentUpdatePriority(previousPriority);
     ReactSharedInternals.T = prevTransition;
   }
-
+  // 如果开启了viewTransation
   if (enableViewTransition) {
     // We should now be after the startGestureTransition's .ready call which is late enough
     // to start animating any pseudo-elements. We have also already applied any adjustments
     // we do to the built-in animations which can now be read by the refs.
+    // 获取过渡回调
     const pendingEvents = pendingViewTransitionEvents;
     let pendingTypes = pendingTransitionTypes;
     pendingTransitionTypes = null;
@@ -4714,8 +4729,10 @@ function flushGestureAnimations(): void {
         if (runningTransition !== null) {
           for (let i = 0; i < pendingEvents.length; i++) {
             const viewTransitionEvent = pendingEvents[i];
+            // 获取清理函数
             const cleanup = viewTransitionEvent(pendingTypes);
             if (cleanup !== undefined) {
+              // 执行清理回调 过渡执行完了就会执行清理函数
               addViewTransitionFinishedListener(runningTransition, cleanup);
             }
           }
@@ -4723,12 +4740,13 @@ function flushGestureAnimations(): void {
       }
     }
   }
-
+  // 如果开启性能追踪
   if (enableProfilerTimer && enableComponentPerformanceTrack) {
     finalizeRender(lanes, commitEndTime);
   }
 
   // Now that we've rendered this lane. Start working on the next lane.
+  // 推入调度链表
   ensureRootIsScheduled(root);
 }
 
@@ -4765,6 +4783,7 @@ function releaseRootPooledCache(root: FiberRoot, remainingLanes: Lanes) {
 
 let didWarnAboutInterruptedViewTransitions = false;
 
+// 处理effect
 export function flushPendingEffectsDelayed(): boolean {
   if (pendingDelayedCommitReason === IMMEDIATE_COMMIT) {
     pendingDelayedCommitReason = DELAYED_PASSIVE_COMMIT;
@@ -4796,7 +4815,12 @@ export function flushPendingEffects(): boolean {
   }
   // 提交手势相关dom修改
   flushGestureMutations();
-  // 提交手势动画
+  // 完成手势 ViewTransition 动画准备：
+  // 确保手势 DOM 修改已经完成。
+  // 恢复真实 DOM 的 view-transition-name。
+  // 调整并启动由手势时间线控制的动画。
+  // 执行 onGestureEnter、onGestureUpdate 等回调。
+  // 清理手势过渡的临时状态。 主要执行一些样式恢复和清理工作
   flushGestureAnimations();
   // 插入更新删除dom
   flushMutationEffects();

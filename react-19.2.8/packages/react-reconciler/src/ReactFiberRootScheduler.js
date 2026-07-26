@@ -113,6 +113,7 @@ let isFlushingWork: boolean = false;
 
 let currentEventTransitionLane: Lane = NoLane;
 
+// 假如全局调度链表
 export function ensureRootIsScheduled(root: FiberRoot): void {
   // This function is called whenever a root receives an update. It does two
   // things 1) it ensures the root is in the root schedule, and 2) it ensures
@@ -585,6 +586,7 @@ function performWorkOnRootViaSchedulerTask(
   if (didFlushPassiveEffects) {
     // Something in the passive effect phase may have canceled the current task.
     // Check if the task node for this root was changed.
+    // 如果调度产生了一个新的任务
     if (root.callbackNode !== originalCallbackNode) {
       // The current task was canceled. Exit. We don't need to call
       // `ensureRootIsScheduled` because the check above implies either that
