@@ -1213,6 +1213,7 @@ export function removeChild(
   parentInstance.removeChild(child);
 }
 
+// 移除子节点
 export function removeChildFromContainer(
   container: Container,
   child: Instance | TextInstance | SuspenseInstance | ActivityInstance,
@@ -1233,6 +1234,7 @@ export function removeChildFromContainer(
   parentNode.removeChild(child);
 }
 
+// 清理节点，执行一些阻塞事件回调
 function clearHydrationBoundary(
   parentInstance: Instance,
   hydrationInstance: SuspenseInstance | ActivityInstance,
@@ -1249,8 +1251,10 @@ function clearHydrationBoundary(
       const data = (nextNode as any).data as string;
       if (data === SUSPENSE_END_DATA || data === ACTIVITY_END_DATA) {
         if (depth === 0) {
+          // 移除隔壁兄弟节点
           parentInstance.removeChild(nextNode);
           // Retry if any event replaying was blocked on this.
+          // 处理一些未完成的内容
           retryIfBlockedOn(hydrationInstance);
           return;
         } else {
@@ -1269,17 +1273,21 @@ function clearHydrationBoundary(
         // then it contributed to the html tag and we need to reset it.
         const ownerDocument = parentInstance.ownerDocument;
         const documentElement: Element = ownerDocument.documentElement as any;
+        // 释放对象，清理属性
         releaseSingletonInstance(documentElement);
       } else if (data === PREAMBLE_CONTRIBUTION_HEAD) {
         const ownerDocument = parentInstance.ownerDocument;
         const head: Element = ownerDocument.head as any;
+        // 释放对象，清理属性
         releaseSingletonInstance(head);
         // We need to clear the head because this is the only singleton that can have children that
         // were part of this boundary but are not inside this boundary.
+        // 清理兄弟节点，保证节点唯一
         clearHead(head);
       } else if (data === PREAMBLE_CONTRIBUTION_BODY) {
         const ownerDocument = parentInstance.ownerDocument;
         const body: Element = ownerDocument.body as any;
+        // 释放对象，清理属性
         releaseSingletonInstance(body);
       }
     }
@@ -1288,6 +1296,7 @@ function clearHydrationBoundary(
   } while (node);
   // TODO: Warn, we didn't find the end comment boundary.
   // Retry if any event replaying was blocked on this.
+  // 执行一些阻塞事件
   retryIfBlockedOn(hydrationInstance);
 }
 
@@ -3759,6 +3768,7 @@ export function commitNewChildToFragmentInstance(
   }
 }
 
+// 移除事件监听器和清理回调对象
 export function deleteChildFromFragmentInstance(
   childInstance: InstanceWithFragmentHandles | Text,
   fragmentInstance: FragmentInstanceType,
@@ -4868,11 +4878,13 @@ export function acquireSingletonInstance(
   updateFiberProps(instance, props);
 }
 
+// 移除attributes
 export function releaseSingletonInstance(instance: Instance): void {
   const attributes = instance.attributes;
   while (attributes.length) {
     instance.removeAttributeNode(attributes[0]);
   }
+  // 清理对象上缓存的属性
   detachDeletedInstance(instance);
 }
 
@@ -5883,6 +5895,7 @@ export function acquireResource(
   return resource.instance;
 }
 
+// 计数自减
 export function releaseResource(resource: Resource): void {
   resource.count--;
 }
@@ -6129,6 +6142,7 @@ export function mountHoistable(
   );
 }
 
+// 移除dom节点
 export function unmountHoistable(instance: Instance): void {
   (instance.parentNode as any).removeChild(instance);
 }

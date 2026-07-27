@@ -1288,6 +1288,8 @@ function hideOrUnhideNearestPortalsOnFiber(fiber: Fiber, isHidden: boolean) {
   }
 }
 
+
+// 清空父节点和双缓存节点的链表引用
 function detachFiberMutation(fiber: Fiber) {
   // Cut off the return pointer to disconnect it from the tree.
   // This enables us to detect and warn against state updates on an unmounted component.
@@ -1366,11 +1368,14 @@ function detachFiberAfterEffects(fiber: Fiber) {
 let hostParent: Instance | Container | null = null;
 let hostParentIsContainer: boolean = false;
 
+
+// 执行effect清理
 function commitDeletionEffects(
   root: FiberRoot,
   returnFiber: Fiber,
   deletedFiber: Fiber,
 ) {
+  // 性能追踪
   const prevEffectStart = pushComponentEffectStart();
 
   // $FlowFixMe[constant-condition]
@@ -1394,12 +1399,15 @@ function commitDeletionEffects(
     // can track the nearest host component on the JS stack as we traverse the
     // tree during the commit phase. This would make insertions faster, too.
     let parent: null | Fiber = returnFiber;
+    // 命名标记
     findParent: while (parent !== null) {
       switch (parent.tag) {
+        // html head之类的 节点
         case HostSingleton: {
           // $FlowFixMe[constant-condition]
           if (supportsSingletons) {
             if (isSingletonScope(parent.type)) {
+              // 设置共享状态
               hostParent = parent.stateNode;
               hostParentIsContainer = false;
               break findParent;
@@ -1415,11 +1423,13 @@ function commitDeletionEffects(
         }
         case HostRoot:
         case HostPortal: {
+          // 实际挂在的dom节点
           hostParent = parent.stateNode.containerInfo;
           hostParentIsContainer = true;
           break findParent;
         }
       }
+      // 向上递归
       parent = parent.return;
     }
     if (hostParent === null) {
@@ -1428,15 +1438,16 @@ function commitDeletionEffects(
           'a bug in React. Please file an issue.',
       );
     }
-
+    // 处理Fiber被删除时，需要执行的卸载工作
     commitDeletionEffectsOnFiber(root, returnFiber, deletedFiber);
     hostParent = null;
     hostParentIsContainer = false;
   } else {
     // Detach refs and call componentWillUnmount() on the whole subtree.
+    // 处理Fiber被删除时，需要执行的卸载工作
     commitDeletionEffectsOnFiber(root, returnFiber, deletedFiber);
   }
-
+  // 性能追踪
   if (
     enableProfilerTimer &&
     enableProfilerCommitHooks &&
@@ -1452,8 +1463,9 @@ function commitDeletionEffects(
       componentEffectEndTime,
     );
   }
+  // 性能追中
   popComponentEffectStart(prevEffectStart);
-
+  // 清空父节点和双缓存节点的链表引用
   detachFiberMutation(deletedFiber);
 }
 
@@ -1470,12 +1482,14 @@ function recursivelyTraverseDeletionEffects(
   }
 }
 
+// 递归处理单个待删除 Fiber：执行卸载逻辑，并根据节点类型删除宿主节点或资源。
 function commitDeletionEffectsOnFiber(
   finishedRoot: FiberRoot,
   nearestMountedAncestor: Fiber,
   deletedFiber: Fiber,
 ) {
   // TODO: Delete this Hook once new DevTools ships everywhere. No longer needed.
+  // 通知 DevTools 当前 Fiber 正在卸载。
   onCommitUnmount(deletedFiber);
 
   const prevEffectStart = pushComponentEffectStart();
@@ -1487,39 +1501,53 @@ function commitDeletionEffectsOnFiber(
   // into their subtree. There are simpler cases in the inner switch
   // that don't modify the stack.
   switch (deletedFiber.tag) {
+    // 处理会提升到 document.head 等位置的节点，例如 title、meta、link。
     case HostHoistable: {
       // $FlowFixMe[constant-condition]
+      // 当前渲染器支持资源管理时使用专门的卸载流程。
       if (supportsResources) {
+        // 已隐藏的 Offscreen 子树之前已经处理过 ref，避免重复解绑。
         if (!offscreenSubtreeWasHidden) {
+          // 清理ref
           safelyDetachRef(deletedFiber, nearestMountedAncestor);
         }
+        // 对兄弟节点执行本函数的递归清理
         recursivelyTraverseDeletionEffects(
           finishedRoot,
           nearestMountedAncestor,
           deletedFiber,
         );
+        // 计数自减
         if (deletedFiber.memoizedState) {
           releaseResource(deletedFiber.memoizedState);
+        // 在父级节点调用removeChild 移除stateNode子节点 移除dom节点
         } else if (deletedFiber.stateNode) {
           unmountHoistable(deletedFiber.stateNode);
         }
+        // 当前类型处理完成，不再进入后面的 HostComponent 分支。
         break;
       }
       // Fall through
     }
+    // 处理 html、head、body 等页面中只能存在一个的宿主节点。
     case HostSingleton: {
       // $FlowFixMe[constant-condition]
       if (supportsSingletons) {
+        // 子树之前未隐藏时，解绑 Singleton 上的 ref。
         if (!offscreenSubtreeWasHidden) {
+          // 清理ref
           safelyDetachRef(deletedFiber, nearestMountedAncestor);
         }
 
+        // 保存进入 Singleton 子树前的宿主父节点信息。
         const prevHostParent = hostParent;
         const prevHostParentIsContainer = hostParentIsContainer;
+        // 如果 Singleton 自己是子节点的宿主作用域，将它作为新的删除父节点。
         if (isSingletonScope(deletedFiber.type)) {
           hostParent = deletedFiber.stateNode;
           hostParentIsContainer = false;
         }
+        // 递归卸载 Singleton 兄弟节点和子节点。
         recursivelyTraverseDeletionEffects(
           finishedRoot,
           nearestMountedAncestor,
@@ -1531,8 +1559,10 @@ function commitDeletionEffectsOnFiber(
         // a different fiber. To increase our chances of avoiding this, specifically
         // if you keyed a HostSingleton so there will be a delete followed by a Placement
         // we treat detach eagerly here
+        // 清理对象上的所有属性和缓存数据
         commitHostSingletonRelease(deletedFiber);
 
+        // 离开 Singleton 子树，恢复外层宿主父节点信息。
         hostParent = prevHostParent;
         hostParentIsContainer = prevHostParentIsContainer;
 
@@ -1540,40 +1570,56 @@ function commitDeletionEffectsOnFiber(
       }
       // Fall through
     }
+    // 处理 div、span、button 等真实 DOM 节点。
     case HostComponent: {
+      // 已隐藏子树的 ref 之前已经解绑；正常删除时在这里解绑。
       if (!offscreenSubtreeWasHidden) {
+        // 清理ref
         safelyDetachRef(deletedFiber, nearestMountedAncestor);
       }
+      // 开启 Fragment ref 时，从 Fragment 实例记录中移除当前宿主节点。
       if (
         enableFragmentRefs &&
         (deletedFiber.tag === HostComponent ||
           (enableFragmentRefsTextNodes && deletedFiber.tag === HostText))
       ) {
+        // 遍历父级Fragment，。清理时间监听和移除实例
         commitFragmentInstanceDeletionEffects(deletedFiber);
       }
       // Intentional fallthrough to next branch
     }
+    // HostComponent 继续进入这里；HostText 也使用相同的宿主删除流程。
     case HostText: {
       // We only need to remove the nearest host child. Set the host parent
       // to `null` on the stack to indicate that nested children don't
       // need to be removed.
       // $FlowFixMe[constant-condition]
+      // Mutation 渲染器直接调用 removeChild 修改宿主树。
       if (supportsMutation) {
+        // 保存当前真正要删除节点的宿主父节点。
         const prevHostParent = hostParent;
         const prevHostParentIsContainer = hostParentIsContainer;
+        // 当前 DOM 被删除后，其内部 DOM 会由浏览器一起删除；
+        // 设置为 null，避免递归时再次逐个 removeChild。
         hostParent = null;
+        // DOM 只删除最外层，但仍需遍历后代执行 Effect、ref 和生命周期清理。
+        // 递归处理子节点
         recursivelyTraverseDeletionEffects(
           finishedRoot,
           nearestMountedAncestor,
           deletedFiber,
         );
+        // 后代清理结束，恢复当前 DOM 对应的真实宿主父节点。
         hostParent = prevHostParent;
         hostParentIsContainer = prevHostParentIsContainer;
 
+        // 找到了外部宿主父节点时，删除当前最外层 DOM。
         if (hostParent !== null) {
           // Now that all the child effects have unmounted, we can remove the
           // node from the tree.
+          // 父节点是 Root 或 Portal 容器。
           if (hostParentIsContainer) {
+            // 移除stateNode节点，真实dom移除 区别在于此处的父级节点可能是特殊节点，像html之类的
             commitHostRemoveChildFromContainer(
               deletedFiber,
               nearestMountedAncestor,
@@ -1581,6 +1627,7 @@ function commitDeletionEffectsOnFiber(
               deletedFiber.stateNode as Instance | TextInstance,
             );
           } else {
+            // 父节点是普通 HostComponent DOM。
             commitHostRemoveChild(
               deletedFiber,
               nearestMountedAncestor,
@@ -1590,6 +1637,8 @@ function commitDeletionEffectsOnFiber(
           }
         }
       } else {
+        // Persistence 渲染器不在这里直接 removeChild，但仍需递归执行卸载逻辑。
+        // 递归处理子节点
         recursivelyTraverseDeletionEffects(
           finishedRoot,
           nearestMountedAncestor,
@@ -1598,18 +1647,23 @@ function commitDeletionEffectsOnFiber(
       }
       break;
     }
+    // 处理尚未完成客户端 Hydration 的服务端 Suspense/Activity 占位区域。
     case DehydratedFragment: {
+      // 开启 Suspense 删除回调时，通知宿主环境该服务端边界被删除。
       if (enableSuspenseCallback) {
         const hydrationCallbacks = finishedRoot.hydrationCallbacks;
         if (hydrationCallbacks !== null) {
           try {
             const onDeleted = hydrationCallbacks.onDeleted;
             if (onDeleted) {
+              // 将被删除的服务端 Suspense 或 Activity 实例传给回调。
+              // 执行onDelete回调
               onDeleted(
                 deletedFiber.stateNode as SuspenseInstance | ActivityInstance,
               );
             }
           } catch (error) {
+            // 删除回调报错时交给最近仍挂载的错误边界处理。
             captureCommitPhaseError(
               deletedFiber,
               nearestMountedAncestor,
@@ -1625,12 +1679,15 @@ function commitDeletionEffectsOnFiber(
       // $FlowFixMe[constant-condition]
       if (supportsMutation) {
         if (hostParent !== null) {
+          // 边界直接位于 Root/Portal 容器下，从容器中清除整段服务端内容。
           if (hostParentIsContainer) {
             clearSuspenseBoundaryFromContainer(
               hostParent as any as Container,
               deletedFiber.stateNode as SuspenseInstance,
             );
           } else {
+            // 边界位于普通 DOM 下，从该 DOM 中清除整段服务端内容。
+            // 清理一些节点和执行阻塞的回调之类的
             clearSuspenseBoundary(
               hostParent as any as Instance,
               deletedFiber.stateNode as SuspenseInstance,
@@ -1640,31 +1697,40 @@ function commitDeletionEffectsOnFiber(
       }
       break;
     }
+    // 处理通过 createPortal 渲染到其他容器中的子树。
     case HostPortal: {
       // $FlowFixMe[constant-condition]
       if (supportsMutation) {
         // When we go into a portal, it becomes the parent to remove from.
+        // 保存外层宿主父节点，进入 Portal 后删除目标需要切换到 Portal 容器。
         const prevHostParent = hostParent;
         const prevHostParentIsContainer = hostParentIsContainer;
         hostParent = deletedFiber.stateNode.containerInfo;
         hostParentIsContainer = true;
+        // 从 Portal 容器中递归删除节点并执行卸载逻辑。
+        // 遍历清理子节点
         recursivelyTraverseDeletionEffects(
           finishedRoot,
           nearestMountedAncestor,
           deletedFiber,
         );
+        // 离开 Portal，恢复外层宿主父节点。
         hostParent = prevHostParent;
         hostParentIsContainer = prevHostParentIsContainer;
       } else {
         // $FlowFixMe[constant-condition]
+        // Persistence 渲染器用空子节点集合替换 Portal 原有内容。
         if (supportsPersistence) {
+          // 更新children节点
           commitHostPortalContainerChildren(
             deletedFiber.stateNode,
             deletedFiber,
+            // 创建新的children节点 大多是个空数组
             createContainerChildSet(),
           );
         }
 
+        // 无论渲染器模式如何，都需要递归执行组件卸载逻辑。
         recursivelyTraverseDeletionEffects(
           finishedRoot,
           nearestMountedAncestor,
@@ -1673,23 +1739,29 @@ function commitDeletionEffectsOnFiber(
       }
       break;
     }
+    // 处理函数组件及其包装类型。
     case FunctionComponent:
     case ForwardRef:
     case MemoComponent:
     case SimpleMemoComponent: {
       // TODO: Use a commitHookInsertionUnmountEffects wrapper to record timings.
+      // 执行该函数组件所有 useInsertionEffect 的清理函数。
       commitHookEffectListUnmount(
         HookInsertion,
         deletedFiber,
         nearestMountedAncestor,
       );
+      // 已隐藏的 Offscreen 子树之前已经断开 Layout Effect，避免再次清理。
       if (!offscreenSubtreeWasHidden) {
+        // 执行该函数组件所有 useLayoutEffect 的清理函数。
+        // 在commitHookEffectListUnmount基础上多一层profile处理
         commitHookLayoutUnmountEffects(
           deletedFiber,
           nearestMountedAncestor,
           HookLayout,
         );
       }
+      // 继续清理函数组件返回的子 Fiber。
       recursivelyTraverseDeletionEffects(
         finishedRoot,
         nearestMountedAncestor,
@@ -1697,11 +1769,18 @@ function commitDeletionEffectsOnFiber(
       );
       break;
     }
+    // 处理 class 组件。
     case ClassComponent: {
+      // 已隐藏子树之前已经处理过布局卸载逻辑。
       if (!offscreenSubtreeWasHidden) {
+        // 解绑 class 组件的 ref。
         safelyDetachRef(deletedFiber, nearestMountedAncestor);
+        // 获取 class 组件实例。
         const instance = deletedFiber.stateNode;
+        // 组件实现了 componentWillUnmount 时执行卸载生命周期。
+        // 执行回调
         if (typeof instance.componentWillUnmount === 'function') {
+          // 执行comWillUnmount
           safelyCallComponentWillUnmount(
             deletedFiber,
             nearestMountedAncestor,
@@ -1709,6 +1788,7 @@ function commitDeletionEffectsOnFiber(
           );
         }
       }
+      // 继续清理 class 组件渲染出的子 Fiber。
       recursivelyTraverseDeletionEffects(
         finishedRoot,
         nearestMountedAncestor,
@@ -1716,12 +1796,15 @@ function commitDeletionEffectsOnFiber(
       );
       break;
     }
+    // 处理实验性的 Scope 节点。
     case ScopeComponent: {
+      // 只有开启 Scope API 时才需要处理它的 ref。
       if (enableScopeAPI) {
         if (!offscreenSubtreeWasHidden) {
           safelyDetachRef(deletedFiber, nearestMountedAncestor);
         }
       }
+      // Scope 本身没有宿主删除逻辑，继续清理其子树。
       recursivelyTraverseDeletionEffects(
         finishedRoot,
         nearestMountedAncestor,
@@ -1729,7 +1812,9 @@ function commitDeletionEffectsOnFiber(
       );
       break;
     }
+    // 处理 Activity/Offscreen 隐藏子树的删除。
     case OffscreenComponent: {
+      // Concurrent 模式需要记录这棵子树之前是否已经隐藏。
       if (disableLegacyMode || deletedFiber.mode & ConcurrentMode) {
         // If this offscreen component is hidden, we already unmounted it. Before
         // deleting the children, track that it's already unmounted so that we
@@ -1740,17 +1825,22 @@ function commitDeletionEffectsOnFiber(
         // But the other case is portals, which need to be detached no matter how
         // deeply they are nested. We should use a subtree flag to track whether a
         // subtree includes a nested portal.
+        // 保存外层 Offscreen 的隐藏状态。
         const prevOffscreenSubtreeWasHidden = offscreenSubtreeWasHidden;
+        // 外层已隐藏或当前 Offscreen 已隐藏，都表示内部 Effect 曾执行过隐藏清理。
         offscreenSubtreeWasHidden =
           prevOffscreenSubtreeWasHidden || deletedFiber.memoizedState !== null;
 
+        // 带着隐藏状态递归删除子树，避免重复解绑 ref 和 Layout Effect。
         recursivelyTraverseDeletionEffects(
           finishedRoot,
           nearestMountedAncestor,
           deletedFiber,
         );
+        // 离开当前 Offscreen 后恢复外层隐藏状态。
         offscreenSubtreeWasHidden = prevOffscreenSubtreeWasHidden;
       } else {
+        // Legacy 模式不维护上述隐藏栈，直接递归清理。
         recursivelyTraverseDeletionEffects(
           finishedRoot,
           nearestMountedAncestor,
@@ -1759,14 +1849,19 @@ function commitDeletionEffectsOnFiber(
       }
       break;
     }
+    // 处理 React ViewTransition 边界。
     case ViewTransitionComponent: {
+      // ViewTransition 功能开启时清理其开发记录、ref 和子树。
       if (enableViewTransition) {
         if (__DEV__) {
+          // 显式命名的 ViewTransition 被卸载后，从 DEV 名称追踪表中移除。
           if (deletedFiber.flags & ViewTransitionNamedStatic) {
             untrackNamedViewTransition(deletedFiber);
           }
         }
+        // 解绑 ViewTransition 对外暴露的 ref。
         safelyDetachRef(deletedFiber, nearestMountedAncestor);
+        // 继续清理 ViewTransition 内部子树。
         recursivelyTraverseDeletionEffects(
           finishedRoot,
           nearestMountedAncestor,
@@ -1776,11 +1871,14 @@ function commitDeletionEffectsOnFiber(
       }
       // Fallthrough
     }
+    // 处理 Fragment；开启 Fragment ref 时需要额外解绑 ref。
     case Fragment: {
       if (enableFragmentRefs) {
+        // 已隐藏子树的 Fragment ref 之前已经解绑。
         if (!offscreenSubtreeWasHidden) {
           safelyDetachRef(deletedFiber, nearestMountedAncestor);
         }
+        // Fragment 没有自己的 DOM，继续递归清理子节点。
         recursivelyTraverseDeletionEffects(
           finishedRoot,
           nearestMountedAncestor,
@@ -1790,6 +1888,7 @@ function commitDeletionEffectsOnFiber(
       }
       // Fallthrough
     }
+    // Context、SuspenseList 等没有专用删除逻辑的 Fiber 走通用递归。
     default: {
       recursivelyTraverseDeletionEffects(
         finishedRoot,
@@ -1799,7 +1898,8 @@ function commitDeletionEffectsOnFiber(
       break;
     }
   }
-
+  
+  // 满足性能追踪条件，并且卸载耗时明显或产生了更新时，记录当前组件的卸载 Effect。
   if (
     enableProfilerTimer &&
     enableProfilerCommitHooks &&
@@ -1817,10 +1917,13 @@ function commitDeletionEffectsOnFiber(
       componentEffectErrors,
     );
   }
-
+  // 当前 Fiber 处理完成，恢复进入该 Fiber 前保存的性能统计上下文。
   popComponentEffectStart(prevEffectStart);
+  // 恢复外层组件累计的 Effect 执行耗时。
   popComponentEffectDuration(prevEffectDuration);
+  // 恢复外层组件收集的 Commit 错误。
   popComponentEffectErrors(prevEffectErrors);
+  // 恢复外层组件“Effect 中是否产生更新”的记录。
   popComponentEffectDidSpawnUpdate(prevEffectDidSpawnUpdate);
 }
 
@@ -1999,14 +2102,15 @@ export function commitMutationEffects(
   finishedWork: Fiber,
   committedLanes: Lanes,
 ) {
+  // 切换共享变量
   inProgressLanes = committedLanes;
   inProgressRoot = root;
 
   rootViewTransitionAffected = false;
   inUpdateViewTransition = false;
-
+  // 重置性能追踪器时间
   resetComponentEffectTimers();
-
+  // 提交effect
   commitMutationEffectsOnFiber(finishedWork, root, committedLanes);
 
   inProgressLanes = null;
@@ -2020,10 +2124,12 @@ function recursivelyTraverseMutationEffects(
 ) {
   // Deletions effects can be scheduled on any fiber type. They need to happen
   // before the children effects have fired.
+  // 获取更新中要删除的fiber节点 
   const deletions = parentFiber.deletions;
   if (deletions !== null) {
     for (let i = 0; i < deletions.length; i++) {
       const childToDelete = deletions[i];
+      // 执行effect回调函数，清理effect
       commitDeletionEffects(root, parentFiber, childToDelete);
     }
   }
@@ -2039,22 +2145,28 @@ function recursivelyTraverseMutationEffects(
 
 let currentHoistableRoot: HoistableRoot | null = null;
 
+// 在fiber上提交effect
 function commitMutationEffectsOnFiber(
   finishedWork: Fiber,
   root: FiberRoot,
   lanes: Lanes,
 ) {
+  // 性能追踪相关变量
   const prevEffectStart = pushComponentEffectStart();
   const prevEffectDuration = pushComponentEffectDuration();
   const prevEffectErrors = pushComponentEffectErrors();
   const prevEffectDidSpawnUpdate = pushComponentEffectDidSpawnUpdate();
+  // 获取双缓存接节点
   const current = finishedWork.alternate;
+  // 获取要做effect的任务
   const flags = finishedWork.flags;
 
   // The effect flag should be checked *after* we refine the type of fiber,
   // because the fiber tag is more specific. An exception is any flag related
   // to reconciliation, because those can be set on all fiber types.
+  // 看要提交修改的节点类型
   switch (finishedWork.tag) {
+    // 常规简单组件
     case FunctionComponent:
     case ForwardRef:
     case MemoComponent:
@@ -2063,8 +2175,11 @@ function commitMutationEffectsOnFiber(
       // This ensures that parent event effects are mutated before child effects.
       // This isn't a supported use case, so we can re-consider it,
       // but this was the behavior we originally shipped.
+      // 处理隐藏组件中effect函数中state和props的更新问题
       if (enableEffectEventMutationPhase) {
+        // 如果要更新节点
         if (flags & Update) {
+          // 获取更新队列和参数
           const updateQueue: FunctionComponentUpdateQueue | null =
             finishedWork.updateQueue as any;
           const eventPayloads =
@@ -2072,12 +2187,16 @@ function commitMutationEffectsOnFiber(
           if (eventPayloads !== null) {
             for (let ii = 0; ii < eventPayloads.length; ii++) {
               const {ref, nextImpl} = eventPayloads[ii];
+              // 核心实现 更新impl 由于useEffectEvent传的函数绑定了作用域，避免内部使用的变量
+              // 没有更新，所以需要更新函数
               ref.impl = nextImpl;
             }
           }
         }
       }
+      // 深度遍历
       recursivelyTraverseMutationEffects(root, finishedWork, lanes);
+      // 提交effect
       commitReconciliationEffects(finishedWork, lanes);
 
       if (flags & Update) {

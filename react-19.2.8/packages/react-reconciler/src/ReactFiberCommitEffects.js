@@ -713,10 +713,12 @@ export function safelyCallComponentWillUnmount(
   nearestMountedAncestor: Fiber | null,
   instance: any,
 ) {
+  // 清理属性 获取新的props
   instance.props = resolveClassComponentProps(
     current.type,
     current.memoizedProps,
   );
+  // copy state
   instance.state = current.memoizedState;
   if (shouldProfile(current)) {
     startEffectTimer();
@@ -730,6 +732,7 @@ export function safelyCallComponentWillUnmount(
       );
     } else {
       try {
+        // 执行卸载周期函数
         instance.componentWillUnmount();
       } catch (error) {
         captureCommitPhaseError(current, nearestMountedAncestor, error);
@@ -747,6 +750,7 @@ export function safelyCallComponentWillUnmount(
       );
     } else {
       try {
+        // 执行卸载周期函数
         instance.componentWillUnmount();
       } catch (error) {
         captureCommitPhaseError(current, nearestMountedAncestor, error);
@@ -840,14 +844,17 @@ export function safelyAttachRef(
   }
 }
 
+// 执行ref的清理
 export function safelyDetachRef(
   current: Fiber,
   nearestMountedAncestor: Fiber | null,
 ) {
   const ref = current.ref;
+  // 这里可以看出ref支持refCleanup清理函数
   const refCleanup = current.refCleanup;
 
   if (ref !== null) {
+    // 执行清理函数
     if (typeof refCleanup === 'function') {
       try {
         if (shouldProfile(current)) {
@@ -873,11 +880,13 @@ export function safelyDetachRef(
       } finally {
         // `refCleanup` has been called. Nullify all references to it to prevent double invocation.
         current.refCleanup = null;
+        // 清空双缓存节点函数引用
         const finishedWork = current.alternate;
         if (finishedWork != null) {
           finishedWork.refCleanup = null;
         }
       }
+      // 将ref设置为空
     } else if (typeof ref === 'function') {
       try {
         if (shouldProfile(current)) {

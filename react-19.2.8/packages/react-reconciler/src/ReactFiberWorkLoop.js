@@ -103,27 +103,49 @@ import {
 } from './ReactFiberPerformanceTrack';
 
 import {
+  // Commit 修改 DOM 后恢复焦点、选区和浏览器事件开关。
   resetAfterCommit,
+  // 创建延时任务，DOM 渲染器中对应 setTimeout。
   scheduleTimeout,
+  // 取消延时任务，DOM 渲染器中对应 clearTimeout。
   cancelTimeout,
+  // 表示当前没有延时任务的特殊值，DOM 渲染器中为 -1。
   noTimeout,
+  // 节点被移除导致焦点丢失后，触发 afterblur 事件。
   afterActiveInstanceBlur,
+  // 创建本次“暂停 Commit”使用的资源等待状态。
   startSuspendingCommit,
+  // 如果文档中已有 ViewTransition，记录并等待它执行完成。
   suspendOnActiveViewTransition,
+  // 检查 CSS、图片等资源是否就绪；未就绪时返回继续 Commit 的订阅函数。
   waitForCommitToBeReady,
+  // 返回 Commit 被暂停的具体原因，主要用于性能记录。
   getSuspendedCommitReason,
+  // 预加载或检查宿主实例资源是否就绪，例如图片。
   preloadInstance,
+  // 预加载或检查宿主资源是否就绪，例如样式表。
   preloadResource,
+  // 当前渲染器是否支持复用服务端 DOM 的 Hydration。
   supportsHydration,
+  // 设置当前更新的事件优先级。
   setCurrentUpdatePriority,
+  // 获取当前更新的事件优先级。
   getCurrentUpdatePriority,
+  // 优先使用显式更新优先级，否则根据当前浏览器事件推断优先级。
   resolveUpdatePriority,
+  // 记录当前浏览器事件，用于区分 Scheduler 工作和新的用户事件。
   trackSchedulerEvent,
+  // 调用浏览器 View Transition API，启动普通视图过渡。
   startViewTransition,
+  // 创建手势 ViewTransition，并将伪元素动画绑定到手势时间线。
   startGestureTransition,
+  // 中止仍在准备或运行的 ViewTransition。
   stopViewTransition,
+  // 注册 ViewTransition 完成后执行的清理回调。
   addViewTransitionFinishedListener,
+  // 创建暴露给 ViewTransition 回调或 ref 的实例对象。
   createViewTransitionInstance,
+  // Hydration 提交后立即重放之前因 Hydration 阻塞的事件。
   flushHydrationEvents,
 } from './ReactFiberConfig';
 
@@ -4108,37 +4130,51 @@ function flushAfterMutationEffects(): void {
 }
 
 function flushMutationEffects(): void {
+  // 没到pending不继续下去
   if (pendingEffectsStatus !== PENDING_MUTATION_PHASE) {
     return;
   }
+  // 重置状态
   pendingEffectsStatus = NO_PENDING_EFFECTS;
-
+  // 有effect要处理
   const root = pendingEffectsRoot;
+  // 等待commit
   const finishedWork = pendingFinishedWork;
+  // 获取任务 产生本次待执行 Commit 副作用的 Lane 集合。
   const lanes = pendingEffectsLanes;
+  // 子元素是否修改dom
   const subtreeMutationHasEffects =
     (finishedWork.subtreeFlags & MutationMask) !== NoFlags;
+  // 要提交的修复是否修改dom
   const rootMutationHasEffect = (finishedWork.flags & MutationMask) !== NoFlags;
-
+  // 如果要修改dom
   if (subtreeMutationHasEffects || rootMutationHasEffect) {
+    // 暂存之前的过渡任务和变量
     const prevTransition = ReactSharedInternals.T;
     ReactSharedInternals.T = null;
     const previousPriority = getCurrentUpdatePriority();
+    // 切换为离散事件
     setCurrentUpdatePriority(DiscreteEventPriority);
+    // 暂存执行上下文
     const prevExecutionContext = executionContext;
+    // 切换状态到提交
     executionContext |= CommitContext;
     try {
       // The next phase is the mutation phase, where we mutate the host tree.
+      // 提交effect更新
       commitMutationEffects(root, finishedWork, lanes);
-
+      // 如果开启了创建事件回调功能
       if (enableCreateEventHandleAPI) {
         if (shouldFireAfterActiveInstanceBlur) {
+          // 节点移除的afterblur
           afterActiveInstanceBlur();
         }
       }
+      // 恢复焦点选区
       resetAfterCommit(root.containerInfo);
     } finally {
       // Reset the priority to the previous non-sync value.
+      // 恢复状态
       executionContext = prevExecutionContext;
       setCurrentUpdatePriority(previousPriority);
       ReactSharedInternals.T = prevTransition;

@@ -569,6 +569,11 @@ function scheduleReplayQueueIfNeeded(formReplayingQueue: FormReplayingQueue) {
   }
 }
 
+// 检查等待中的 focus、drag、mouse、pointer 等事件。
+// 找出被当前边界阻塞的事件。
+// 将这些事件标记为不再阻塞。
+// 安排重新触发这些事件。
+// 继续处理等待 Hydration 的目标和表单 Action。
 export function retryIfBlockedOn(
   unblocked: Container | SuspenseInstance | ActivityInstance,
 ): void {

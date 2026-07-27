@@ -127,6 +127,9 @@ export const alwaysThrottleRetries: boolean = true;
 
 // Gate whether useEffectEvent uses the mutation phase (true) or before-mutation
 // phase (false) for updating event function references.
+// 是否在修改 DOM 的阶段，同步更新组件内部的 Effect Event 回调
+// 确保 Activity/Offscreen 等隐藏组件重新显示时，
+// useEffectEvent 使用最新的 props 和 state
 export const enableEffectEventMutationPhase: boolean = true;
 
 export const passChildrenWhenCloningPersistedNodes: boolean = false;

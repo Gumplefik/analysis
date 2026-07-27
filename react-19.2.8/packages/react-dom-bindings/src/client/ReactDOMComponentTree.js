@@ -68,6 +68,7 @@ const internalPropsMap:
   | WeakMap<InstanceUnion, Props>
   | Map<InstanceUnion, Props> = new PossiblyWeakMap();
 
+// 清理对象上的缓存属性
 export function detachDeletedInstance(node: Instance): void {
   if (enableInternalInstanceMap) {
     internalInstanceMap.delete(node);

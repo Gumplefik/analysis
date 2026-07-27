@@ -291,18 +291,21 @@ export function commitFragmentInstanceInsertionEffects(fiber: Fiber): void {
   }
 }
 
+// 递归遍历父级Fragment，移除事件监听和节点
 export function commitFragmentInstanceDeletionEffects(fiber: Fiber): void {
   let parent = fiber.return;
   while (parent !== null) {
+    // 如果父级也是Fragment
     if (isFragmentInstanceParent(parent)) {
       const fragmentInstance: FragmentInstanceType = parent.stateNode;
+      // 清理事件和移除实例
       deleteChildFromFragmentInstance(fiber.stateNode, fragmentInstance);
     }
-
+    // 如果到了真实节点就退出
     if (isHostParent(parent)) {
       return;
     }
-
+    // 向上遍历
     parent = parent.return;
   }
 }
@@ -321,6 +324,7 @@ function isHostParent(fiber: Fiber): boolean {
   );
 }
 
+// 检查是不是Fragment 并且有实例
 function isFragmentInstanceParent(fiber: Fiber): boolean {
   return fiber && fiber.tag === Fragment && fiber.stateNode !== null;
 }
@@ -640,6 +644,7 @@ export function commitHostPlacement(finishedWork: Fiber) {
   }
 }
 
+// 从host里移除parentContainer 移除dom子节点
 export function commitHostRemoveChildFromContainer(
   deletedFiber: Fiber,
   nearestMountedAncestor: Fiber,
@@ -663,6 +668,7 @@ export function commitHostRemoveChildFromContainer(
   }
 }
 
+// 移除子节点removeChild
 export function commitHostRemoveChild(
   deletedFiber: Fiber,
   nearestMountedAncestor: Fiber,
@@ -709,6 +715,7 @@ export function commitHostRootContainerChildren(
   }
 }
 
+// 更新children节点
 export function commitHostPortalContainerChildren(
   portal: {
     containerInfo: Container,

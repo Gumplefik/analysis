@@ -163,6 +163,13 @@ export type Fiber = {
   // Effect
   flags: Flags,
   subtreeFlags: Flags,
+  // 更新中需要删除的旧的fiber节点列表
+  // Commit 阶段通过它找到需要卸载的节点，执行：
+  // 组件 Effect 清理。
+  // 生命周期卸载。
+  // 清除 ref。
+  // 删除对应 DOM。
+  // 断开旧 Fiber 引用。
   deletions: Array<Fiber> | null,
 
   lanes: Lanes,
