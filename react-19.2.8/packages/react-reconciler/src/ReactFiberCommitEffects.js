@@ -111,6 +111,7 @@ export function commitHookLayoutEffects(
   }
 }
 
+// 带有profile的effect清理，实际调用还是 commitHookEffectListUnmount
 export function commitHookLayoutUnmountEffects(
   finishedWork: Fiber,
   nearestMountedAncestor: null | Fiber,
@@ -138,6 +139,10 @@ export function commitHookLayoutUnmountEffects(
   }
 }
 
+
+// useInsertionEffect提交执行
+// 样式注入相关 按顺序执行effect的初始化
+// 见 https://react.dev/reference/react/useInsertionEffect
 export function commitHookEffectListMount(
   flags: HookFlags,
   finishedWork: Fiber,
@@ -150,7 +155,9 @@ export function commitHookEffectListMount(
       const firstEffect = lastEffect.next;
       let effect = firstEffect;
       do {
+        // 如果任务重叠一致
         if ((effect.tag & flags) === flags) {
+          // 性能追踪
           if (enableSchedulingProfiler) {
             if ((flags & HookPassive) !== NoHookEffect) {
               markComponentPassiveEffectMountStarted(finishedWork);
@@ -161,6 +168,7 @@ export function commitHookEffectListMount(
 
           // Mount
           let destroy;
+          // 开发逻辑略过
           if (__DEV__) {
             if ((flags & HookInsertion) !== NoHookEffect) {
               setIsRunningInsertionEffect(true);
@@ -172,10 +180,12 @@ export function commitHookEffectListMount(
           } else {
             const create = effect.create;
             const inst = effect.inst;
+            // 执行create，就是useEffect里传入的函数
             destroy = create();
+            // 保存清理函数
             inst.destroy = destroy;
           }
-
+          // 性能追踪相关
           if (enableSchedulingProfiler) {
             if ((flags & HookPassive) !== NoHookEffect) {
               markComponentPassiveEffectMountStopped();
@@ -238,7 +248,9 @@ export function commitHookEffectListMount(
             }
           }
         }
+        // 继续下一个effect
         effect = effect.next;
+        // effect是个环形链表，所有到头的时候就代表之心完了，就要退出
       } while (effect !== firstEffect);
     }
   } catch (error) {
@@ -247,6 +259,7 @@ export function commitHookEffectListMount(
 }
 
 // 找到effect更新队列上flags一样的effect，执行destory 
+// 执行effect的清理
 export function commitHookEffectListUnmount(
   flags: HookFlags,
   finishedWork: Fiber,
@@ -844,7 +857,7 @@ export function safelyAttachRef(
   }
 }
 
-// 执行ref的清理
+// 执行ref的清理 解绑ref
 export function safelyDetachRef(
   current: Fiber,
   nearestMountedAncestor: Fiber | null,

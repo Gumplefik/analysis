@@ -1000,13 +1000,16 @@ export function commitUpdate(
   internalInstanceHandle: Object,
 ): void {
   // Diff and update the properties.
+  // 更新属性
   updateProperties(domElement, type, oldProps, newProps);
 
   // Update the props handle so that we know which props are the ones with
   // with current event handlers.
+  // 保存props引用
   updateFiberProps(domElement, newProps);
 }
 
+// 设置文本节点的内容为空
 export function resetTextContent(domElement: Instance): void {
   setTextContent(domElement, '');
 }
@@ -1149,6 +1152,7 @@ export function insertInContainerBefore(
   if (__DEV__) {
     warnForReactChildrenConflict(container);
   }
+  // 处理container是多种dom节点的问题，对要插入的父级节点进行调整
   let parentNode: DocumentFragment | Element;
   if (container.nodeType === DOCUMENT_NODE) {
     parentNode = (container as any).body;
@@ -1162,6 +1166,7 @@ export function insertInContainerBefore(
   } else {
     parentNode = container as any;
   }
+  // 插入节点
   if (supportsMoveBefore && child.parentNode !== null) {
     // $FlowFixMe[prop-missing]: We've checked this with supportsMoveBefore.
     parentNode.moveBefore(child, beforeChild);
@@ -1170,6 +1175,8 @@ export function insertInContainerBefore(
   }
 }
 
+// 是否是head节点，主要处理节点在head里的问题，因为一般都是操作document。body
+// 如果在head里面的话，就会变成document.head
 export function isSingletonScope(type: string): boolean {
   return type === 'head';
 }
@@ -3743,27 +3750,37 @@ export function updateFragmentInstanceFiber(
   instance._fragmentFiber = fragmentFiber;
 }
 
+// 将子节点提交到fragment节点里
+// 主要对节点进行事件绑定监听和fragment元素观察调用observe
 export function commitNewChildToFragmentInstance(
+  // 子节点
   childInstance: InstanceWithFragmentHandles | Text,
+  // fragment实例
   fragmentInstance: FragmentInstanceType,
 ): void {
+  // 如果是文本节点就退出
   if (childInstance.nodeType === TEXT_NODE) {
     return;
   }
+  // 子节点 主要是子节点用fragment相关的handle
   const instance: InstanceWithFragmentHandles = childInstance as any;
+  // 获取事件监听器
   const eventListeners = fragmentInstance._eventListeners;
   if (eventListeners !== null) {
     for (let i = 0; i < eventListeners.length; i++) {
       const {type, listener, optionsOrUseCapture} = eventListeners[i];
+      // 监听子节点的事件
       instance.addEventListener(type, listener, optionsOrUseCapture);
     }
   }
+  // fragment元素是否有观察者 有的话挨个调用observe
   if (fragmentInstance._observers !== null) {
     fragmentInstance._observers.forEach(observer => {
       observer.observe(instance);
     });
   }
   if (enableFragmentRefsInstanceHandles) {
+    // 子节点的reactFragments属性保存fragment实例
     addFragmentHandleToInstance(instance, fragmentInstance);
   }
 }

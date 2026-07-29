@@ -729,6 +729,7 @@ export function checkHasForceUpdateAfterProcessing(): boolean {
   return hasForceUpdate;
 }
 
+// 将callback合并到shared里 主要处理的是setState的回调函数
 export function deferHiddenCallbacks<State>(
   updateQueue: UpdateQueue<State>,
 ): void {

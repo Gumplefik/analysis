@@ -18,6 +18,7 @@ import {TEXT_NODE} from './HTMLNodeType';
  * @param {string} text
  * @internal
  */
+// 只有单文本节点才可以
 function setTextContent(node: Element, text: string): void {
   if (text) {
     const firstChild = node.firstChild;

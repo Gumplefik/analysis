@@ -219,10 +219,15 @@ type EffectInstance = {
 };
 
 export type Effect = {
+  // Effect 类型标记：区分 useEffect、useLayoutEffect，以及本次是否需要执行。
   tag: HookFlags,
+  // Effect 实例：主要保存 create 执行后返回的清理函数 destroy。
   inst: EffectInstance,
+  // Effect 回调函数：组件提交后执行，返回值通常是清理函数。
   create: () => (() => void) | void,
+  // 依赖数组：用于判断 Effect 是否需要重新执行。
   deps: Array<mixed> | void | null,
+  // 指向下一个 Effect；同一组件的 Effect 通过它组成环形链表。
   next: Effect,
 };
 

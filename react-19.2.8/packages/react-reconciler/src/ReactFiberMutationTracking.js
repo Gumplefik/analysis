@@ -12,7 +12,9 @@ import {
   enableViewTransition,
 } from 'shared/ReactFeatureFlags';
 
+// 整个 React Root 本次提交是否发生过 DOM 变更
 export let rootMutationContext: boolean = false;
+// 当前 ViewTransition 子树是否发生过 DOM 变更
 export let viewTransitionMutationContext: boolean = false;
 
 export function pushRootMutationContext(): void {
@@ -42,6 +44,7 @@ export function popMutationContext(prev: boolean): void {
   }
 }
 
+// 标记发生了dom变更
 export function trackHostMutation(): void {
   // This is extremely hot function that must be inlined. Don't add more stuff.
   if (enableViewTransition) {

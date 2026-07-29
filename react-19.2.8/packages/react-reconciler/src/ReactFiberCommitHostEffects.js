@@ -57,6 +57,7 @@ import {
   acquireSingletonInstance,
   releaseSingletonInstance,
   isSingletonScope,
+  // 带 ref 的 Fragment 新增了一个 DOM 子节点，需要让这个新节点继承 Fragment 已有的统一行为。
   commitNewChildToFragmentInstance,
   deleteChildFromFragmentInstance,
 } from './ReactFiberConfig';
@@ -256,11 +257,14 @@ export function commitShowHideHostTextInstance(node: Fiber, isHidden: boolean) {
   }
 }
 
+// 所有fragment元素对子节点进行事件绑定监听 保证行为的统一
 export function commitNewChildToFragmentInstances(
   fiber: Fiber,
   parentFragmentInstances: null | Array<FragmentInstanceType>,
 ): void {
   if (
+    // 如果插入节点的类型是dom实例并且 不是文本节点或者说没开启文本节点的framentref
+    // 或者还没初始化完 父节点已卸载或者没有加载
     (fiber.tag !== HostComponent &&
       !(enableFragmentRefsTextNodes && fiber.tag === HostText)) ||
     // Only run fragment insertion effects for initial insertions
@@ -269,8 +273,10 @@ export function commitNewChildToFragmentInstances(
   ) {
     return;
   }
+  // 对每一个fragment元素的实例进行事件的同步
   for (let i = 0; i < parentFragmentInstances.length; i++) {
     const fragmentInstance = parentFragmentInstances[i];
+    // 对子节点实例进行事件监听处理 典型场景，fragment元素只有在所有子节点ready才切换视图
     commitNewChildToFragmentInstance(fiber.stateNode, fragmentInstance);
   }
 }
@@ -388,6 +394,7 @@ function getHostSibling(fiber: Fiber): ?Instance {
   }
 }
 
+// 和insertOrAppendPlacementNode不同的是这个函数父级在挂载容器里插入节点
 function insertOrAppendPlacementNodeIntoContainer(
   node: Fiber,
   before: ?Instance,
@@ -395,17 +402,22 @@ function insertOrAppendPlacementNodeIntoContainer(
   parentFragmentInstances: null | Array<FragmentInstanceType>,
 ): void {
   const {tag} = node;
+  // 是否是普通dom节点
   const isHost = tag === HostComponent || tag === HostText;
   if (isHost) {
     const stateNode = node.stateNode;
+    // 插入容器 区别就是有没有before节点的问题
     if (before) {
       insertInContainerBefore(parent, stateNode, before);
     } else {
       appendChildToContainer(parent, stateNode);
     }
+    // 如果支持fragmentref
     if (enableFragmentRefs) {
+      // 日常监听事件，保证行为统一
       commitNewChildToFragmentInstances(node, parentFragmentInstances);
     }
+    // 标记在ViewTransation过程中有dom修改
     trackHostMutation();
     return;
   } else if (tag === HostPortal) {
@@ -414,7 +426,7 @@ function insertOrAppendPlacementNodeIntoContainer(
     // the portal directly.
     return;
   }
-
+  // head节点调整父级节点
   if (
     // $FlowFixMe[constant-condition]
     (supportsSingletons ? tag === HostSingleton : false) &&
@@ -427,6 +439,7 @@ function insertOrAppendPlacementNodeIntoContainer(
   }
 
   const child = node.child;
+  // 对子节点进行递归处理
   if (child !== null) {
     insertOrAppendPlacementNodeIntoContainer(
       child,
@@ -447,26 +460,41 @@ function insertOrAppendPlacementNodeIntoContainer(
   }
 }
 
+// 将node节点插入到父级实例里，并且同步绑定事件给所有fragment
+// 对于node节点的所有子节点也进行同样的处理
 function insertOrAppendPlacementNode(
+  // 要插入的fiber节点
   node: Fiber,
+  // 在哪个节点之前插入
   before: ?Instance,
+  // 父级实例
   parent: Instance,
+  // 父级的Fragment实例
   parentFragmentInstances: null | Array<FragmentInstanceType>,
 ): void {
+  // 插入节点类型
   const {tag} = node;
+  // 如果是dom节点或者文本节点
   const isHost = tag === HostComponent || tag === HostText;
   if (isHost) {
+    // 获取节点的dom实例
     const stateNode = node.stateNode;
+    // 如果有before就说明要插入到before前面
     if (before) {
       insertBefore(parent, stateNode, before);
     } else {
+      // 父级节点调用appendChild就可以了
       appendChild(parent, stateNode);
     }
+    // 如果支持fragment的ref的话
     if (enableFragmentRefs) {
+      // 就同步frament的事件处理，以保持行为一致 对子节点进行事件监听
       commitNewChildToFragmentInstances(node, parentFragmentInstances);
     }
+    // 标记ViewTransition子树发生了DOM 变更
     trackHostMutation();
     return;
+    // portal节点忽略
   } else if (tag === HostPortal) {
     // If the insertion itself is a portal, then we don't want to traverse
     // down its children. Instead, we'll get insertions from each child in
@@ -476,54 +504,76 @@ function insertOrAppendPlacementNode(
 
   if (
     // $FlowFixMe[constant-condition]
+    // 如果是特殊父节点，并且是head节点
     (supportsSingletons ? tag === HostSingleton : false) &&
     isSingletonScope(node.type)
   ) {
     // This singleton is the parent of deeper nodes and needs to become
     // the parent for child insertions and appends
+    // 切换父级为head节点
     parent = node.stateNode;
   }
-
+  // 获取节点的字节点
+  // 递归处理node节点的所有子节点
   const child = node.child;
   if (child !== null) {
+    // 递归调用自身插入节点
     insertOrAppendPlacementNode(child, before, parent, parentFragmentInstances);
+    // 获取兄弟节点
     let sibling = child.sibling;
     while (sibling !== null) {
+      // 插入兄弟节点
       insertOrAppendPlacementNode(
         sibling,
         before,
         parent,
         parentFragmentInstances,
       );
+      // 继续下一位兄弟
       sibling = sibling.sibling;
     }
   }
 }
 
+// 提交节点插入 流程：
+// 找一个有效的父级节点，保存所有父级的fragment实例
+// 同步监听节点节点，以便和fragment元素同步
+// 根据父级节点是head，普通dom，挂载容器的不容，执行不同的插入函数
 function commitPlacement(finishedWork: Fiber): void {
   // Recursively insert all host nodes into the parent.
   let hostParentFiber;
   let parentFragmentInstances = null;
+  // 获取父级节点
   let parentFiber = finishedWork.return;
+  // 向上遍历找到一个真实dom节点
   while (parentFiber !== null) {
+    // 父级如果是Fragment元素
     if (enableFragmentRefs && isFragmentInstanceParent(parentFiber)) {
       const fragmentInstance: FragmentInstanceType = parentFiber.stateNode;
+      // 将Fragment实例暂存一下
       if (parentFragmentInstances === null) {
         parentFragmentInstances = [fragmentInstance];
       } else {
         parentFragmentInstances.push(fragmentInstance);
       }
     }
+    // 如果是dom节点
     if (isHostParent(parentFiber)) {
+      // 保存父级
       hostParentFiber = parentFiber;
       break;
     }
+    // 向上遍历
     parentFiber = parentFiber.return;
   }
 
   // $FlowFixMe[constant-condition]
+  // 当前渲染器是否支持直接修改已经存在的宿主节点
+  // 如果不支持直接修改
   if (!supportsMutation) {
+    // 开启了Fragment ref
     if (enableFragmentRefs) {
+      // 在父级Fragment节点上同步处理事件行为，和新增节点统一行为
       commitImmutablePlacementNodeToFragmentInstances(
         finishedWork,
         parentFragmentInstances,
@@ -538,15 +588,19 @@ function commitPlacement(finishedWork: Fiber): void {
         'in React. Please file an issue.',
     );
   }
-
+  // 根据实际挂在的父级节点进行更新
   switch (hostParentFiber.tag) {
+    // 特殊根节点
     case HostSingleton: {
       // $FlowFixMe[constant-condition]
       if (supportsSingletons) {
+        // 获取dom实例
         const parent: Instance = hostParentFiber.stateNode;
+        // 获取一个有效的兄弟节点 将要插到这个节点前面
         const before = getHostSibling(finishedWork);
         // We only have the top Fiber that was inserted but we need to recurse down its
         // children to find all the terminal nodes.
+        // 在parent里插入finishedWork节点 处理所有fragment的事件绑定。即监听finishedwork节点
         insertOrAppendPlacementNode(
           finishedWork,
           before,
@@ -557,18 +611,24 @@ function commitPlacement(finishedWork: Fiber): void {
       }
       // Fall through
     }
+    // 常规dom节点
     case HostComponent: {
+      // 获取父级节点实例
       const parent: Instance = hostParentFiber.stateNode;
+      // 有清空文本任务
       if (hostParentFiber.flags & ContentReset) {
         // Reset the text content of the parent before doing any insertions
+        // 清空文本节点内容
         resetTextContent(parent);
         // Clear ContentReset from the effect tag
+        // 剔除任务标记
         hostParentFiber.flags &= ~ContentReset;
       }
-
+      // 获取有效兄弟节点
       const before = getHostSibling(finishedWork);
       // We only have the top Fiber that was inserted but we need to recurse down its
       // children to find all the terminal nodes.
+      // 在parent里插入finishedWork节点 处理所有fragment的事件绑定。即监听finishedwork节点
       insertOrAppendPlacementNode(
         finishedWork,
         before,
@@ -577,10 +637,14 @@ function commitPlacement(finishedWork: Fiber): void {
       );
       break;
     }
+    // 根节点或者portal节点
     case HostRoot:
     case HostPortal: {
+      // 获取挂载容器
       const parent: Container = hostParentFiber.stateNode.containerInfo;
+      // 获取节点的兄弟节点
       const before = getHostSibling(finishedWork);
+      // 在容器中插入节点
       insertOrAppendPlacementNodeIntoContainer(
         finishedWork,
         before,
@@ -597,6 +661,7 @@ function commitPlacement(finishedWork: Fiber): void {
   }
 }
 
+// 处理父级上的Fragment更新
 function commitImmutablePlacementNodeToFragmentInstances(
   finishedWork: Fiber,
   parentFragmentInstances: null | Array<FragmentInstanceType>,
@@ -604,10 +669,12 @@ function commitImmutablePlacementNodeToFragmentInstances(
   if (!enableFragmentRefs) {
     return;
   }
+  // 如果是真实dom节点
   const isHost = finishedWork.tag === HostComponent;
   if (isHost) {
     commitNewChildToFragmentInstances(finishedWork, parentFragmentInstances);
     return;
+  // portal节点不处理
   } else if (finishedWork.tag === HostPortal) {
     // If the insertion itself is a portal, then we don't want to traverse
     // down its children. Instead, we'll get insertions from each child in
@@ -632,11 +699,13 @@ function commitImmutablePlacementNodeToFragmentInstances(
   }
 }
 
+// 提交节点插入
 export function commitHostPlacement(finishedWork: Fiber) {
   try {
     if (__DEV__) {
       runWithFiberInDEV(finishedWork, commitPlacement, finishedWork);
     } else {
+      // 提交插入节点
       commitPlacement(finishedWork);
     }
   } catch (error) {
