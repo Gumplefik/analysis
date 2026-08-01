@@ -4130,8 +4130,16 @@ function flushAfterMutationEffects(): void {
   pendingEffectsStatus = PENDING_SPAWNED_WORK;
 }
 
+// 执行 Mutation阶段，把 Fiber变化应用到 DOM，然后将新 Fiber树切换为当前树。
+// 检查阶段
+// → 获取finishedWork
+// → 判断是否有Mutation
+// → 修改真实DOM
+// → 恢复焦点和上下文
+// → 新Fiber树切换为current
+// → 进入Layout阶段
 function flushMutationEffects(): void {
-  // 没到pending不继续下去
+  // 没到pending不继续下去 现在状态为8个，顺序执行
   if (pendingEffectsStatus !== PENDING_MUTATION_PHASE) {
     return;
   }
@@ -4162,7 +4170,11 @@ function flushMutationEffects(): void {
     executionContext |= CommitContext;
     try {
       // The next phase is the mutation phase, where we mutate the host tree.
-      // 提交effect更新
+      // 删除DOM
+      // 插入或移动DOM
+      // 更新属性和文本
+      // 隐藏或显示Offscreen
+      // 清理旧ref和Layout Effect
       commitMutationEffects(root, finishedWork, lanes);
       // 如果开启了创建事件回调功能
       if (enableCreateEventHandleAPI) {
@@ -4172,10 +4184,11 @@ function flushMutationEffects(): void {
         }
       }
       // 恢复焦点选区
+      // 用于处理焦点变化、恢复选区和事件状态。
       resetAfterCommit(root.containerInfo);
     } finally {
       // Reset the priority to the previous non-sync value.
-      // 恢复状态
+      // 恢复执行上下文
       executionContext = prevExecutionContext;
       setCurrentUpdatePriority(previousPriority);
       ReactSharedInternals.T = prevTransition;
@@ -4186,7 +4199,9 @@ function flushMutationEffects(): void {
   // the mutation phase, so that the previous tree is still current during
   // componentWillUnmount, but before the layout phase, so that the finished
   // work is current during componentDidMount/Update.
+  // 切换执行节点
   root.current = finishedWork;
+  // 更新执行状态
   pendingEffectsStatus = PENDING_LAYOUT_PHASE;
 }
 
