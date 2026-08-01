@@ -2142,6 +2142,21 @@ function isSuspenseBoundaryBeingHidden(
   return false;
 }
 
+
+// 删除、插入、移动、更新 DOM。
+// Offscreen节点隐藏或显示。
+// 清理旧 ref。
+// 执行 useLayoutEffect 的旧清理函数。
+// 处理 Suspense重试监听和 Hydration。
+// 挂载、释放 Hoistable资源。
+// 核心为commitMutationEffectsOnFiber
+// commitMutationEffects
+//   ↓
+// commitMutationEffectsOnFiber
+//   ↓
+// recursivelyTraverseMutationEffects
+//   ├─ commitDeletionEffects
+//   └─ commitMutationEffectsOnFiber(child)
 export function commitMutationEffects(
   root: FiberRoot,
   finishedWork: Fiber,
@@ -2156,6 +2171,7 @@ export function commitMutationEffects(
   // 重置性能追踪器时间
   resetComponentEffectTimers();
   // 提交effect
+  // 遍历Fiber并执行真正的Mutation
   commitMutationEffectsOnFiber(finishedWork, root, committedLanes);
 
   inProgressLanes = null;
@@ -2194,6 +2210,22 @@ function recursivelyTraverseMutationEffects(
 let currentHoistableRoot: HoistableRoot | null = null;
 
 // 根据 Fiber 类型提交 Mutation 阶段工作：递归处理子树，并更新 DOM、ref、显隐和资源。
+// FunctionComponent
+// → 清理旧useLayoutEffect
+// ClassComponent
+// → 清理旧ref、延迟隐藏回调
+// HostComponent
+// → 更新DOM属性、处理插入
+// HostText
+// → 更新文本
+// HostRoot
+// → 提交整棵Root、处理Hydration
+// SuspenseComponent
+// → 处理fallback和Promise重试监听
+// OffscreenComponent
+// → 隐藏或显示DOM、管理Effect
+// HostHoistable
+// → 管理title、meta、样式和脚本资源
 function commitMutationEffectsOnFiber(
   // Render 阶段已经构建完成、等待提交的 Fiber。
   finishedWork: Fiber,
