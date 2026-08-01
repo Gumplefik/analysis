@@ -17,6 +17,8 @@ export let rootMutationContext: boolean = false;
 // 当前 ViewTransition 子树是否发生过 DOM 变更
 export let viewTransitionMutationContext: boolean = false;
 
+// 开启新的root提交时，要清空旧的dom记录
+// 就是意思开始新的root提交时，这时候要重置，表示暂时还没有dom变更
 export function pushRootMutationContext(): void {
   if (enableDefaultTransitionIndicator) {
     rootMutationContext = false;

@@ -38,7 +38,9 @@ export type OffscreenState = {
   // TODO: This doesn't do anything, yet. It's always NoLanes. But eventually it
   // will represent the pending work that must be included in the render in
   // order to unhide the component.
+  // 隐藏子树中需要保留、以后继续处理的任务通道
   baseLanes: Lanes,
+  // 隐藏或暂停时保存的缓存，恢复渲染时继续使用
   cachePool: SpawnedCachePool | null,
 };
 

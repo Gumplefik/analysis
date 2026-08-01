@@ -320,10 +320,19 @@ import type {Flags} from './ReactFiberFlags';
 
 // Used during the commit phase to track the state of the Offscreen component stack.
 // Allows us to avoid traversing the return path to find the nearest Offscreen ancestor.
+// 当前正在提交的 Fiber 是否位于“本次提交后仍然隐藏”的 Offscreen 子树中。
+// 用于决定是否延迟回调、跳过 ref/Effect，以及是否隐藏真实宿主节点。
+// 本次提交后是否隐藏。
 let offscreenSubtreeIsHidden: boolean = false;
+// 当前正在提交的 Fiber 是否位于“上一次提交时已经隐藏”的 Offscreen 子树中。
+// 用于避免重复清理 ref/Layout Effect，并识别从隐藏恢复显示的子树。
+// 上一次提交时是否已经隐藏。
 let offscreenSubtreeWasHidden: boolean = false;
 // Track whether there's a hidden offscreen above with no HostComponent between. If so,
 // it overrides the hiddenness of the HostComponent below.
+// 当前 Fiber 上方是否存在尚未被 HostComponent 隔开的隐藏 Offscreen。
+// 用于防止内层 Offscreen 想显示时，把仍受外层 Offscreen 控制的 DOM 错误显示出来。
+// 是否仍受未被 HostComponent 隔开的外层隐藏 Offscreen 控制。
 let offscreenDirectParentIsHidden: boolean = false;
 
 // Used to track if a form needs to be reset at the end of the mutation phase.
@@ -1212,6 +1221,7 @@ function commitTransitionProgress(offscreenFiber: Fiber) {
   }
 }
 
+// 递归设置组件的显示状态
 function hideOrUnhideAllChildren(parentFiber: Fiber, isHidden: boolean) {
   // $FlowFixMe[constant-condition]
   if (!supportsMutation) {
@@ -1219,6 +1229,7 @@ function hideOrUnhideAllChildren(parentFiber: Fiber, isHidden: boolean) {
   }
   // Finds the nearest host component children and updates their visibility
   // to either hidden or visible.
+  // 深度遍历执行
   let child = parentFiber.child;
   while (child !== null) {
     hideOrUnhideAllChildrenOnFiber(child, isHidden);
@@ -1226,6 +1237,7 @@ function hideOrUnhideAllChildren(parentFiber: Fiber, isHidden: boolean) {
   }
 }
 
+// 对于dom组件来说就是设置display显示还是不显示
 function hideOrUnhideAllChildrenOnFiber(fiber: Fiber, isHidden: boolean) {
   // $FlowFixMe[constant-condition]
   if (!supportsMutation) {
@@ -1957,6 +1969,7 @@ function commitDeletionEffectsOnFiber(
   popComponentEffectDidSpawnUpdate(prevEffectDidSpawnUpdate);
 }
 
+// 保存所有的更新回调到suspenseCallback里面
 function commitSuspenseCallback(finishedWork: Fiber) {
   // TODO: Delete this feature. It's not properly covered by DEV features.
   const newState: SuspenseState | null = finishedWork.memoizedState;
@@ -2078,6 +2091,7 @@ function getRetryCache(finishedWork: Fiber) {
   }
 }
 
+// 对use的函数绑定then事件监听器，用于等待ready后加入到更新任务队列列
 function attachSuspenseRetryListeners(
   finishedWork: Fiber,
   wakeables: RetryQueue,
@@ -2088,6 +2102,7 @@ function attachSuspenseRetryListeners(
   const retryCache = getRetryCache(finishedWork);
   wakeables.forEach(wakeable => {
     // Memoize using the boundary fiber to prevent redundant listeners.
+    // 检查use是否有绑定回调函数
     if (!retryCache.has(wakeable)) {
       retryCache.add(wakeable);
 
@@ -2147,6 +2162,7 @@ export function commitMutationEffects(
   inProgressRoot = null;
 }
 
+// 深度遍历递归节点
 function recursivelyTraverseMutationEffects(
   root: FiberRoot,
   parentFiber: Fiber,
@@ -2167,12 +2183,14 @@ function recursivelyTraverseMutationEffects(
   if (parentFiber.subtreeFlags & (MutationMask | Cloned)) {
     let child = parentFiber.child;
     while (child !== null) {
+      // 这里可以看出来深度，因为先遍历子节点后遍历兄弟
       commitMutationEffectsOnFiber(child, root, lanes);
       child = child.sibling;
     }
   }
 }
 
+// 当前正在提交修改的fiber子树
 let currentHoistableRoot: HoistableRoot | null = null;
 
 // 根据 Fiber 类型提交 Mutation 阶段工作：递归处理子树，并更新 DOM、ref、显隐和资源。
@@ -2501,6 +2519,7 @@ function commitMutationEffectsOnFiber(
       // 文本内容发生变化时更新 Text 节点。
       if (flags & Update) {
         // $FlowFixMe[constant-condition]
+        // 是否支持直接修改dom节点
         if (supportsMutation) {
           if (finishedWork.stateNode === null) {
             throw new Error(
@@ -2517,7 +2536,7 @@ function commitMutationEffectsOnFiber(
           // 更新时读取旧 Fiber 文本；Hydration 首次提交则使用新文本占位。
           const oldText: string =
             current !== null ? current.memoizedProps : newText;
-
+          // 提交修改文本节点的内容
           commitHostTextUpdate(finishedWork, newText, oldText);
         }
       }
@@ -2525,47 +2544,59 @@ function commitMutationEffectsOnFiber(
     }
     // React Fiber 树根节点。
     case HostRoot: {
-      // 为根节点创建嵌套 Effect 耗时统计范围。
+      // 性能追踪相关
       const prevProfilerEffectDuration = pushNestedEffectDurations();
 
-      // 创建根级 Mutation 上下文，用于记录本次提交是否真实修改了宿主树。
+      // 重置全局变量，标记当前无dom变更
       pushRootMutationContext();
       // $FlowFixMe[constant-condition]
+      // 支持直接修改dom
       if (supportsResources) {
         // 提交前准备 head 中的 Hoistable 资源。
+        // 清空tag缓存
         prepareToCommitHoistables();
 
-        // 保存外层资源根，并切换到当前 React Root 对应的 document/head。
+        // 暂存当前提交节点，并切换到当前 React Root 对应的 document/head。
         const previousHoistableRoot = currentHoistableRoot;
+        // 获取document元素
         currentHoistableRoot = getHoistableRoot(root.containerInfo);
 
         // 递归提交整棵 Fiber 树。
         recursivelyTraverseMutationEffects(root, finishedWork, lanes);
-        // 离开 Root 后恢复资源根。
+        // 离开 Root 后恢复节点
         currentHoistableRoot = previousHoistableRoot;
 
         // 处理 HostRoot 自身的 Placement。
         commitReconciliationEffects(finishedWork, lanes);
       } else {
+        // 相对上面的逻辑少了资源切花你的步骤
         recursivelyTraverseMutationEffects(root, finishedWork, lanes);
         commitReconciliationEffects(finishedWork, lanes);
       }
 
       // Root 有更新时处理 Hydration 完成或 Persistence 容器替换。
+      // 如果有更新任务要去处理
       if (flags & Update) {
         // $FlowFixMe[constant-condition]
+        // 支持修改dom节点并且是服务端模式
         if (supportsMutation && supportsHydration) {
+          // 如果节点已初始化
           if (current !== null) {
+            // 获取缓存的数据状态
             const prevRootState: RootState = current.memoizedState;
-            // 旧 Root 仍是服务端状态时，通知宿主环境 Hydration 已完成。
+            // 表示已经有ready的dom文本了
             if (prevRootState.isDehydrated) {
+              // 就要初始化事件，绑定事件
+              // 如果是csr的话dom在客户端生成就一起初始化绑定事件了
               commitHostHydratedContainer(root, finishedWork);
             }
           }
         }
         // $FlowFixMe[constant-condition]
         // Persistence 渲染器用新的子节点集合替换根容器内容。
+        // 服务端是否支持复用节点
         if (supportsPersistence) {
+          // 一整个替换更新children
           commitHostRootContainerChildren(root, finishedWork);
         }
       }
@@ -2583,10 +2614,12 @@ function commitMutationEffectsOnFiber(
         // except when a form was actually submitted.
         // 清除全局标记并查找需要 reset 的 form。
         needsFormReset = false;
+        // 重置表单， form reset
         recursivelyResetForms(finishedWork);
       }
 
       // 将子树 Effect 耗时累加到 FiberRoot。
+      // 性能追踪
       if (enableProfilerTimer && enableProfilerCommitHooks) {
         root.effectDuration += popNestedEffectDurations(
           prevProfilerEffectDuration,
@@ -2594,9 +2627,11 @@ function commitMutationEffectsOnFiber(
       }
 
       // 结束根级 Mutation 上下文。
+      // 标记root节点发生了dom变更
       popMutationContext(false);
 
       // Transition 中实际提交了手动 Loading UI 时，标记默认加载指示器已处理。
+      // 如果有过渡指示器，root节点发生了变更，并且有需要更新的任务
       if (
         enableDefaultTransitionIndicator &&
         rootMutationContext &&
@@ -2604,6 +2639,7 @@ function commitMutationEffectsOnFiber(
       ) {
         // This root had a mutation. Mark this root as having rendered a manual
         // loading state.
+        // 镖旗需要移除默认过渡指示器
         markIndicatorHandled(root);
       }
 
@@ -2619,21 +2655,26 @@ function commitMutationEffectsOnFiber(
       // HostComponent parent in the React tree will also be a parent in the
       // actual host tree. So we must hide all of them.
       // Portal 直接子节点的显隐由最近 Offscreen 状态决定。
+      // 获取隐藏状态信息
       const prevOffscreenDirectParentIsHidden = offscreenDirectParentIsHidden;
       offscreenDirectParentIsHidden = offscreenSubtreeIsHidden;
-      // 为 Portal 创建独立 Mutation 上下文。
+      // 为 Portal 创建独立 Mutation 上下文。 重置上下文为false
       const prevMutationContext = pushMutationContext();
       // $FlowFixMe[constant-condition]
       if (supportsResources) {
         // Portal 可能属于另一个 document，因此切换资源根。
+        // 切换工作document
         const previousHoistableRoot = currentHoistableRoot;
+        // 获取document
         currentHoistableRoot = getHoistableRoot(
           finishedWork.stateNode.containerInfo,
         );
+        // 递归提交更新和初始effect
         recursivelyTraverseMutationEffects(root, finishedWork, lanes);
         commitReconciliationEffects(finishedWork, lanes);
         currentHoistableRoot = previousHoistableRoot;
       } else {
+        // 递归提交更新和初始effect
         recursivelyTraverseMutationEffects(root, finishedWork, lanes);
         commitReconciliationEffects(finishedWork, lanes);
       }
@@ -2643,6 +2684,7 @@ function commitMutationEffectsOnFiber(
         // Ideally we would track which React ViewTransition component nests the container
         // but that's costly. Instead, we treat each Portal as if it's a new React root.
         // Therefore any leaked mutation means that the root should animate.
+        // 镖旗根节点需要进行过渡变更、
         rootViewTransitionAffected = true;
       }
       // 恢复外层 Mutation 和 Offscreen 上下文。
@@ -2650,10 +2692,13 @@ function commitMutationEffectsOnFiber(
       offscreenDirectParentIsHidden = prevOffscreenDirectParentIsHidden;
 
       // Persistence 模式用 pendingChildren 替换 Portal 容器内容。
+      // 是否有更新任务
       if (flags & Update) {
         // $FlowFixMe[constant-condition]
+        // 支持复用节点 直接更新children
         if (supportsPersistence) {
           commitHostPortalContainerChildren(
+            // portal节点
             finishedWork.stateNode,
             finishedWork,
             finishedWork.stateNode.pendingChildren,
@@ -2663,6 +2708,7 @@ function commitMutationEffectsOnFiber(
       break;
     }
     // Profiler Fiber：提交子树并累计 Mutation Effect 耗时。
+    // 性能追踪组件
     case Profiler: {
       const prevProfilerEffectDuration = pushNestedEffectDurations();
 
@@ -2680,21 +2726,27 @@ function commitMutationEffectsOnFiber(
       break;
     }
     // Activity 边界：提交子树，并给挂起任务绑定资源就绪后的重试监听。
+    // Activity组件，处理子节点显示影藏的，主要可以保持子节点的状态
     case ActivityComponent: {
+      // 递归更新
       recursivelyTraverseMutationEffects(root, finishedWork, lanes);
       commitReconciliationEffects(finishedWork, lanes);
+      // 处理更新任务
       if (flags & Update) {
         // retryQueue 保存导致 Activity 挂起的 Promise/资源。
+        // retryqueue就是use传入的promise的队列
         const retryQueue: RetryQueue | null = finishedWork.updateQueue as any;
         if (retryQueue !== null) {
           finishedWork.updateQueue = null;
+          // 为所有use的promise函数添加监听器，负责ready后的更新任务提交
           attachSuspenseRetryListeners(finishedWork, retryQueue);
         }
       }
       break;
     }
-    // Suspense 边界：处理 fallback 显隐、回调和资源重试。
+    // Suspense组件
     case SuspenseComponent: {
+      // 递归更新
       recursivelyTraverseMutationEffects(root, finishedWork, lanes);
       commitReconciliationEffects(finishedWork, lanes);
 
@@ -2709,8 +2761,9 @@ function commitMutationEffectsOnFiber(
       //
       // Also, all this logic could/should move to the passive phase so it
       // doesn't block paint.
-      // Suspense 的主内容由第一个 Offscreen 子 Fiber 管理。
+      // 获取子节点 
       const offscreenFiber: Fiber = finishedWork.child as any;
+      // 如果需要切换显示的话
       if (offscreenFiber.flags & Visibility) {
         // Throttle the appearance and disappearance of Suspense fallbacks.
         // memoizedState 非空表示当前正在显示 fallback。
@@ -2720,11 +2773,13 @@ function commitMutationEffectsOnFiber(
         const wasShowingFallback =
           current !== null &&
           (current.memoizedState as SuspenseState | null) !== null;
-
+        // 是否节流重试
         if (alwaysThrottleRetries) {
+          // 如果数据更新了的话
           if (isShowingFallback !== wasShowingFallback) {
             // A fallback is either appearing or disappearing.
             // 记录 fallback 切换时间，用于控制 Suspense 重试节流。
+            // 重置时间
             markCommitTimeOfFallback();
           }
         } else {
@@ -2739,6 +2794,7 @@ function commitMutationEffectsOnFiber(
       // 执行 suspenseCallback，并给未完成资源绑定重试监听。
       if (flags & Update) {
         try {
+          // 提交保存更新任务到回调里
           commitSuspenseCallback(finishedWork);
         } catch (error) {
           captureCommitPhaseError(finishedWork, finishedWork.return, error);
@@ -2746,40 +2802,55 @@ function commitMutationEffectsOnFiber(
         const retryQueue: RetryQueue | null = finishedWork.updateQueue as any;
         if (retryQueue !== null) {
           finishedWork.updateQueue = null;
+          // 处理异步ready渲染的回调函数
           attachSuspenseRetryListeners(finishedWork, retryQueue);
         }
       }
       break;
     }
     // Activity/Suspense 主内容使用的 Offscreen 边界，负责子树显隐。
+    // 见 https://react.dev/blog/2022/06/15/react-labs-what-we-have-been-working-on-june-2022#offscreen
+    // 对于一个隐藏的组件，其子节点的更新并不会及时更新上去，总是先保存着待节点显示后才更新上去
+    // 所以需要记录要执行的任务和相关状态信息
+    // 那同时意味着有这些信息，那么节点肯定就是隐藏状态，不然直接更新上去不就好了
     case OffscreenComponent: {
-      // memoizedState 非空表示更新后隐藏。
+      // 获取新的state信息 对于该组件主要保存的是隐藏对象的任务和缓存
+      // 目的是暂存没执行完的任务和相关数据
+      // 换句话说，只有节点隐藏才需要保存一些没执行完的任务和相关状态
+      // 所以state为非空时意味着节点隐藏，有一些任务还没执行更新上去
       const newState: OffscreenState | null = finishedWork.memoizedState;
+      // state非空意味着是隐藏组件
       const isHidden = newState !== null;
       // 旧 Fiber memoizedState 非空表示更新前隐藏。
+      // 首次挂载时current为空 memoizedState非空意味着组件是隐藏状态
       const wasHidden = current !== null && current.memoizedState !== null;
 
       // Concurrent 模式维护嵌套 Offscreen 状态，防止重复清理或错误显示后代。
+      // 非legacy模式或者更新节点是并发模式
       if (disableLegacyMode || finishedWork.mode & ConcurrentMode) {
         // Before committing the children, track on the stack whether this
         // offscreen subtree was already hidden, so that we don't unmount the
         // effects again.
         // 保存进入当前 Offscreen 前的三种隐藏上下文。
+        // 这三个状态实际上父节点执行的时候保存的，这是个深度遍历 就在下面几行代码赋值的
         const prevOffscreenSubtreeIsHidden = offscreenSubtreeIsHidden;
         const prevOffscreenSubtreeWasHidden = offscreenSubtreeWasHidden;
         const prevOffscreenDirectParentIsHidden = offscreenDirectParentIsHidden;
-        // 当前或祖先隐藏，都表示整棵子树本次应视为隐藏。
+        // 所以上一组状态是父级节点的状态，既然父级隐藏，那么子节点肯定也要隐藏
+        // 当前或祖先隐藏，都表示整棵子树本次应视为隐藏。 
+        // 更新父节点的显示状态
         offscreenSubtreeIsHidden = prevOffscreenSubtreeIsHidden || isHidden;
         offscreenDirectParentIsHidden =
           prevOffscreenDirectParentIsHidden || isHidden;
         offscreenSubtreeWasHidden = prevOffscreenSubtreeWasHidden || wasHidden;
-        // 带着新的隐藏上下文提交子树。
+        // 深度递归遍历节点
         recursivelyTraverseMutationEffects(root, finishedWork, lanes);
         // 子树提交完成后恢复外层上下文。
         offscreenSubtreeWasHidden = prevOffscreenSubtreeWasHidden;
         offscreenDirectParentIsHidden = prevOffscreenDirectParentIsHidden;
         offscreenSubtreeIsHidden = prevOffscreenSubtreeIsHidden;
 
+        // 日志跟踪
         if (
           // If this was the root of the reappear.
           wasHidden &&
@@ -2801,10 +2872,12 @@ function commitMutationEffectsOnFiber(
           );
         }
       } else {
+        // 直接遍历子节点
         recursivelyTraverseMutationEffects(root, finishedWork, lanes);
       }
 
       // 处理 Offscreen 自身的 Placement。
+      // 提交节点插入初始化
       commitReconciliationEffects(finishedWork, lanes);
 
       // Visibility 表示显示/隐藏状态发生变化。
@@ -2816,10 +2889,10 @@ function commitMutationEffectsOnFiber(
         // read it during an event
         // 更新实例中的可见状态位。
         if (isHidden) {
-          // &= ~：清除 OffscreenVisible 位。
+          // &= ~：清除 OffscreenVisible 位。 标记节点隐藏
           offscreenInstance._visibility &= ~OffscreenVisible;
         } else {
-          // |=：设置 OffscreenVisible 位。
+          // |=：设置 OffscreenVisible 位。 标记节点显示
           offscreenInstance._visibility |= OffscreenVisible;
         }
 
@@ -2830,20 +2903,23 @@ function commitMutationEffectsOnFiber(
           //   - This is an update, not first mount.
           //   - This Offscreen was not hidden before.
           //   - Ancestor Offscreen was not hidden in previous commit or in this commit
+          // 如果组件需要更新，之前不是隐藏状态 父级一直显示
           if (
             isUpdate &&
             !wasHidden &&
             !offscreenSubtreeIsHidden &&
             !offscreenSubtreeWasHidden
           ) {
+            // 如果非legacy并且是并发模式
             if (
               disableLegacyMode ||
               (finishedWork.mode & ConcurrentMode) !== NoMode
             ) {
               // Disappear the layout effects of all the children
               // 子树由显示变为隐藏，清理 ref 和 Layout Effect。
+              // 执行effect的清理和资源卸载清理
               recursivelyTraverseDisappearLayoutEffects(finishedWork);
-
+              // 性能追踪
               if (
                 enableProfilerTimer &&
                 enableProfilerCommitHooks &&
@@ -2864,10 +2940,12 @@ function commitMutationEffectsOnFiber(
         }
 
         // $FlowFixMe[constant-condition]
+        // 支持修改dom节点
         if (supportsMutation) {
           // If it's trying to unhide but the parent is still hidden, then we should not unhide.
           // 隐藏时总要处理；显示时只有直接父 Offscreen 可见才真正显示 DOM。
           if (isHidden || !offscreenDirectParentIsHidden) {
+            // 切换节点显示状态 设置display属性
             hideOrUnhideAllChildren(finishedWork, isHidden);
           }
         }
@@ -2875,6 +2953,7 @@ function commitMutationEffectsOnFiber(
 
       // TODO: Move to passive phase
       // 给 Offscreen 内挂起的资源绑定重试监听。
+      // 处理异步函数的ready就绪更新
       if (flags & Update) {
         const offscreenQueue: OffscreenQueue | null =
           finishedWork.updateQueue as any;
@@ -2882,6 +2961,7 @@ function commitMutationEffectsOnFiber(
           const retryQueue = offscreenQueue.retryQueue;
           if (retryQueue !== null) {
             offscreenQueue.retryQueue = null;
+            // 执行异步资源的监听回调
             attachSuspenseRetryListeners(finishedWork, retryQueue);
           }
         }
@@ -2890,9 +2970,10 @@ function commitMutationEffectsOnFiber(
     }
     // SuspenseList：提交子树，并监听列表中未完成的 Suspense 资源。
     case SuspenseListComponent: {
+      // 递归更新
       recursivelyTraverseMutationEffects(root, finishedWork, lanes);
       commitReconciliationEffects(finishedWork, lanes);
-
+      // 有更新的话就得绑定then函数处理ready后的更新
       if (flags & Update) {
         const retryQueue: Set<Wakeable> | null =
           finishedWork.updateQueue as any;
@@ -2903,33 +2984,37 @@ function commitMutationEffectsOnFiber(
       }
       break;
     }
-    // React ViewTransition 边界。
+    // ViewTransation组件
     case ViewTransitionComponent: {
       if (enableViewTransition) {
         // ref 更新时解绑旧 ViewTransition 实例。
         if (flags & Ref) {
+          // 解绑ref
           if (!offscreenSubtreeWasHidden && current !== null) {
             safelyDetachRef(current, current.return);
           }
         }
         // 创建当前 ViewTransition 独立的 DOM 变更记录范围。
+        // 保存以前的状态 便于恢复
         const prevMutationContext = pushMutationContext();
-        // 保存外层是否处于 update ViewTransition。
         const prevUpdate = inUpdateViewTransition;
         // 只有 ViewTransition 支持的 Lane 才参与本次动画。
         const isViewTransitionEligible =
           // $FlowFixMe[constant-condition]
           enableViewTransition &&
+          // 只有一些异步任务才支持
           includesOnlyViewTransitionEligibleLanes(lanes);
-        // 读取 update 动画配置。
+        // 获取新的props
         const props = finishedWork.memoizedProps;
         // update 不为 none 时，记录子树变更是否需要触发更新动画。
         inUpdateViewTransition =
           isViewTransitionEligible &&
+          // 有过渡样式
           getViewTransitionClassName(props.default, props.update) !== 'none';
-        // 提交边界内部的所有 Mutation。
+        // 递归更新
         recursivelyTraverseMutationEffects(root, finishedWork, lanes);
         commitReconciliationEffects(finishedWork, lanes);
+        // 标记需要更新
         if (isViewTransitionEligible) {
           if (current === null) {
             // This is a new mount. We should have handled this as part of the
@@ -2944,32 +3029,38 @@ function commitMutationEffectsOnFiber(
           }
         }
         // 离开边界，恢复外层 ViewTransition 和 Mutation 上下文。
+        // 恢复上下文
         inUpdateViewTransition = prevUpdate;
         popMutationContext(prevMutationContext);
         break;
       }
       break;
     }
-    // 实验性 Scope 节点：维护 Scope ref 和内部实例映射。
+    // Scope组件，目前没有足够的文档
     case ScopeComponent: {
       if (enableScopeAPI) {
+        // 递归更新
         recursivelyTraverseMutationEffects(root, finishedWork, lanes);
         commitReconciliationEffects(finishedWork, lanes);
 
         // TODO: This is a temporary solution that allowed us to transition away
         // from React Flare on www.
         // Scope ref 更新时先解绑旧 ref，再在可见状态下绑定新 ref。
+        // 需要更新ref
         if (flags & Ref) {
+          // 解绑ref
           if (!offscreenSubtreeWasHidden && current !== null) {
             safelyDetachRef(finishedWork, finishedWork.return);
           }
+          // 绑定ref
           if (!offscreenSubtreeIsHidden) {
             safelyAttachRef(finishedWork, finishedWork.return);
           }
         }
-        // Scope 内容变化时刷新 Scope 实例关联的 Fiber。
+        // 需要更新
         if (flags & Update) {
           const scopeInstance = finishedWork.stateNode;
+          // 保存节点引用
           prepareScopeUpdate(scopeInstance, finishedWork);
         }
       }
@@ -2977,14 +3068,17 @@ function commitMutationEffectsOnFiber(
     }
     // Fragment 开启 ref 功能时，让复用的 Fragment 实例指向新 Fiber。
     case Fragment:
+      // 如有支持fragmnet ref
       if (enableFragmentRefs) {
         if (current && current.stateNode !== null) {
+          // 在stateNode上保存fragment引用
           updateFragmentInstanceFiber(finishedWork, current.stateNode);
         }
       }
     // Fallthrough
     // 其他没有专用 Mutation 逻辑的 Fiber，只需递归子树并处理 Placement。
     default: {
+      // 直接进如常规的递归更新
       recursivelyTraverseMutationEffects(root, finishedWork, lanes);
       commitReconciliationEffects(finishedWork, lanes);
 
@@ -2992,7 +3086,7 @@ function commitMutationEffectsOnFiber(
     }
   }
 
-  // 开启性能追踪时记录当前 Fiber 的 Mutation Effect 耗时、错误和派生更新。
+  // 性能追踪相关、
   if (
     enableProfilerTimer &&
     enableProfilerCommitHooks &&
@@ -3062,6 +3156,7 @@ function commitReconciliationEffects(
   }
 }
 
+// 递归重置form
 function recursivelyResetForms(parentFiber: Fiber) {
   if (parentFiber.subtreeFlags & FormReset) {
     let child = parentFiber.child;
@@ -3073,9 +3168,13 @@ function recursivelyResetForms(parentFiber: Fiber) {
 }
 
 function resetFormOnFiber(fiber: Fiber) {
+  // 先重置本身节点
   recursivelyResetForms(fiber);
+  // 如果是真实dom组件并且需要重置form
   if (fiber.tag === HostComponent && fiber.flags & FormReset) {
+    // 获取form节点
     const formInstance: FormInstance = fiber.stateNode;
+    // form reset
     resetFormInstance(formInstance);
   }
 }
@@ -3291,38 +3390,46 @@ function recursivelyTraverseLayoutEffects(
   }
 }
 
+// 执行组件卸载的一些effect的销毁和资源释放操作
 export function disappearLayoutEffects(finishedWork: Fiber) {
+  // 时间记录相关
   const prevEffectStart = pushComponentEffectStart();
   const prevEffectDuration = pushComponentEffectDuration();
   const prevEffectErrors = pushComponentEffectErrors();
   const prevEffectDidSpawnUpdate = pushComponentEffectDidSpawnUpdate();
+  // 判断组件的类型
   switch (finishedWork.tag) {
     case FunctionComponent:
     case ForwardRef:
     case MemoComponent:
     case SimpleMemoComponent: {
+      // 虚拟组件提交卸载的effect 
+      // 执行effect的清理
       // TODO (Offscreen) Check: flags & LayoutStatic
       commitHookLayoutUnmountEffects(
         finishedWork,
         finishedWork.return,
         HookLayout,
       );
+      // 继续递归
       recursivelyTraverseDisappearLayoutEffects(finishedWork);
       break;
     }
     case ClassComponent: {
       // TODO (Offscreen) Check: flags & RefStatic
+      // 解绑ref
       safelyDetachRef(finishedWork, finishedWork.return);
 
       const instance = finishedWork.stateNode;
       if (typeof instance.componentWillUnmount === 'function') {
+        // 执行componentWillUnmount
         safelyCallComponentWillUnmount(
           finishedWork,
           finishedWork.return,
           instance,
         );
       }
-
+      // 继续深度遍历
       recursivelyTraverseDisappearLayoutEffects(finishedWork);
       break;
     }
@@ -3330,6 +3437,7 @@ export function disappearLayoutEffects(finishedWork: Fiber) {
       // $FlowFixMe[constant-condition]
       if (supportsSingletons) {
         // TODO (Offscreen) Check: flags & RefStatic
+        // 释放对象清理属性
         commitHostSingletonRelease(finishedWork);
       }
       // Expected fallthrough to HostComponent
@@ -3337,6 +3445,7 @@ export function disappearLayoutEffects(finishedWork: Fiber) {
     case HostHoistable:
     case HostComponent: {
       // TODO (Offscreen) Check: flags & RefStatic
+      // 解绑ref
       safelyDetachRef(finishedWork, finishedWork.return);
 
       if (
@@ -3408,10 +3517,12 @@ export function disappearLayoutEffects(finishedWork: Fiber) {
   popComponentEffectDidSpawnUpdate(prevEffectDidSpawnUpdate);
 }
 
+// 深度递归提交useLayoutEffect
 function recursivelyTraverseDisappearLayoutEffects(parentFiber: Fiber) {
   // TODO (Offscreen) Check: subtreeflags & (RefStatic | LayoutStatic)
   let child = parentFiber.child;
   while (child !== null) {
+    // 组件卸载相关的effect清理和资源卸载
     disappearLayoutEffects(child);
     child = child.sibling;
   }

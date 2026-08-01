@@ -569,6 +569,7 @@ function scheduleReplayQueueIfNeeded(formReplayingQueue: FormReplayingQueue) {
   }
 }
 
+// 主要是为了初始化事件绑定，由于dom在服务端生成，到了客户端没有进行事件初始化，需要初始化绑定相关事件
 // 检查等待中的 focus、drag、mouse、pointer 等事件。
 // 找出被当前边界阻塞的事件。
 // 将这些事件标记为不再阻塞。

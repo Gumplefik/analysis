@@ -1014,6 +1014,7 @@ export function resetTextContent(domElement: Instance): void {
   setTextContent(domElement, '');
 }
 
+// 修改文本节点的内容
 export function commitTextUpdate(
   textInstance: TextInstance,
   oldText: string,
@@ -4986,19 +4987,24 @@ const preconnectsSet: Set<string> = new Set();
 export type HoistableRoot = Document | ShadowRoot;
 
 // getRootNode is missing from IE and old jsdom versions
+// 获取documnent元素
 export function getHoistableRoot(container: Container): HoistableRoot {
   // $FlowFixMe[method-unbinding]
+  // https://developer.mozilla.org/en-US/docs/Web/API/Node/getRootNode
+  // 返回htmldocument节点 或者 iframe的htmlducoment节点
   if (typeof container.getRootNode === 'function') {
     const rootNode = container.getRootNode();
     if (rootNode.nodeType === DOCUMENT_NODE) {
       return rootNode as any as Document;
     }
+    // iframe也视为shadownroot
     if (rootNode.nodeType === DOCUMENT_FRAGMENT_NODE) {
       return rootNode as any as ShadowRoot;
     }
   }
   return container.nodeType === DOCUMENT_NODE
     ? (container as any as Document)
+    // iframe要获取domcument
     : container.ownerDocument;
 }
 
@@ -6832,6 +6838,7 @@ export const HostTransitionContext: ReactContext<TransitionStatus> = {
 export type FormInstance = HTMLFormElement;
 export function resetFormInstance(form: FormInstance): void {
   ReactBrowserEventEmitterSetEnabled(true);
+  // 调用form reset
   form.reset();
   ReactBrowserEventEmitterSetEnabled(false);
 }

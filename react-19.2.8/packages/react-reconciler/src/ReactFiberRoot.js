@@ -43,6 +43,7 @@ import {createCache, retainCache} from './ReactFiberCacheComponent';
 
 export type RootState = {
   element: any,
+  // Root 容器中是否存在服务端生成、但还没有完成客户端 Hydration 的 HTML。
   isDehydrated: boolean,
   cache: Cache,
 };

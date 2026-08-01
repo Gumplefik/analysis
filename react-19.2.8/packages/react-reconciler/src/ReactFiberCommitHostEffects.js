@@ -145,11 +145,14 @@ export function commitHostUpdate(
   }
 }
 
+
+// 提交更新文本节点的内容
 export function commitHostTextUpdate(
   finishedWork: Fiber,
   newText: string,
   oldText: string,
 ) {
+  // 获取text文本dom节点
   const textInstance: TextInstance = finishedWork.stateNode;
   try {
     if (__DEV__) {
@@ -161,6 +164,7 @@ export function commitHostTextUpdate(
         newText,
       );
     } else {
+      // 提交文本节点更新 注入函数
       commitTextUpdate(textInstance, oldText, newText);
     }
     trackHostMutation();
@@ -896,6 +900,7 @@ export function commitHostSingletonAcquisition(finishedWork: Fiber) {
   }
 }
 
+// 释放对象清理属性
 export function commitHostSingletonRelease(releasingWork: Fiber) {
   if (__DEV__) {
     runWithFiberInDEV(

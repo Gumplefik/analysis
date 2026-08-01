@@ -183,7 +183,9 @@ export function enqueueConcurrentRenderForLane(
   fiber: Fiber,
   lane: Lane,
 ): FiberRoot | null {
+  // 推入一组更新参数
   enqueueUpdate(fiber, null, null, lane);
+  // 递归获取到hostRoot
   return getRootForUpdatedFiber(fiber);
 }
 

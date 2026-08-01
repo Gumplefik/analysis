@@ -930,6 +930,7 @@ export function requestUpdateLane(fiber: Fiber): Lane {
   return eventPriorityToLane(resolveUpdatePriority());
 }
 
+// 获取重试任务的优先级
 function requestRetryLane(fiber: Fiber) {
   // This is a fork of `requestUpdateLane` designed specifically for Suspense
   // "retries" — a special update that attempts to flip a Suspense boundary
@@ -5315,20 +5316,25 @@ export function restartGestureRoot(root: FiberRoot): void {
   ensureRootIsScheduled(root);
 }
 
+// 在执行节点上执行对应的任务 主要是合并任务推入更新队列
 function retryTimedOutBoundary(boundaryFiber: Fiber, retryLane: Lane) {
   // The boundary fiber (a Suspense component or SuspenseList component)
   // previously was rendered in its fallback state. One of the promises that
   // suspended it has resolved, which means at least part of the tree was
   // likely unblocked. Try rendering again, at a new lanes.
+  // 没有任务
   if (retryLane === NoLane) {
     // TODO: Assign this to `suspenseState.retryLane`? to avoid
     // unnecessary entanglement?
     retryLane = requestRetryLane(boundaryFiber);
   }
   // TODO: Special case idle priority?
+  // 获取hostRoot节点
   const root = enqueueConcurrentRenderForLane(boundaryFiber, retryLane);
   if (root !== null) {
+    // 合并任务
     markRootUpdated(root, retryLane);
+    // 推入更新任务链表
     ensureRootIsScheduled(root);
   }
 }
@@ -5342,16 +5348,22 @@ export function retryDehydratedSuspenseBoundary(boundaryFiber: Fiber) {
   retryTimedOutBoundary(boundaryFiber, retryLane);
 }
 
+// use的then函数 负责绑定use返回的值进行渲染更新
 export function resolveRetryWakeable(boundaryFiber: Fiber, wakeable: Wakeable) {
   let retryLane: Lane = NoLane; // Default
   let retryCache: WeakSet<Wakeable> | Set<Wakeable> | null;
+  // 检查是什么组件的use
   switch (boundaryFiber.tag) {
+    // 两个内置组件
     case ActivityComponent:
     case SuspenseComponent:
+      // 获取dom实例
       retryCache = boundaryFiber.stateNode;
+      // 获取新的state
       const suspenseState: null | SuspenseState | ActivityState =
         boundaryFiber.memoizedState;
       if (suspenseState !== null) {
+        // 标记需要更新 有一些任务由于数据还没有ready需要重新执行的
         retryLane = suspenseState.retryLane;
       }
       break;
@@ -5359,6 +5371,7 @@ export function resolveRetryWakeable(boundaryFiber: Fiber, wakeable: Wakeable) {
       retryCache = boundaryFiber.stateNode;
       break;
     case OffscreenComponent: {
+      // 屏幕外隐藏组件
       const instance: OffscreenInstance = boundaryFiber.stateNode;
       retryCache = instance._retryCache;
       break;
@@ -5369,13 +5382,14 @@ export function resolveRetryWakeable(boundaryFiber: Fiber, wakeable: Wakeable) {
           'This is probably a bug in React.',
       );
   }
-
+  // 有真实dom节点或者实例
   if (retryCache !== null) {
     // The wakeable resolved, so we no longer need to memoize, because it will
     // never be thrown again.
+    // 说明dom已经渲染了，不需要在去监听回调了
     retryCache.delete(wakeable);
   }
-
+  // 恢复执行之前没有执行完的任务 一些等待数据的任务 主要是推入任务队列
   retryTimedOutBoundary(boundaryFiber, retryLane);
 }
 
