@@ -4206,11 +4206,14 @@ function flushMutationEffects(): void {
 }
 
 function flushLayoutEffects(): void {
+  // 检查前置状态
   if (pendingEffectsStatus !== PENDING_LAYOUT_PHASE) {
     return;
   }
+  // 重置状态为0 咱不清楚用途
   pendingEffectsStatus = NO_PENDING_EFFECTS;
 
+  // 性能追踪相关
   if (enableProfilerTimer && enableComponentPerformanceTrack) {
     const suspendedViewTransitionReason = pendingSuspendedViewTransitionReason;
     if (suspendedViewTransitionReason !== null) {
@@ -4226,30 +4229,43 @@ function flushLayoutEffects(): void {
     }
   }
 
+  // 获取当前要操作的上下文信息
   const root = pendingEffectsRoot;
   const finishedWork = pendingFinishedWork;
   const lanes = pendingEffectsLanes;
 
+  // 如果有激活默认的过渡指示器
   if (enableDefaultTransitionIndicator) {
+    // loading的清理函数
     const cleanUpIndicator = root.pendingIndicator;
+    // 如果有清理函数并且当前不需要加载指示器
     if (cleanUpIndicator !== null && root.indicatorLanes === NoLanes) {
       // We have now committed all Transitions that needed the default indicator
       // so we can now run the clean up function. We do this in the layout phase
       // so it has the same semantics as if you did it with a useLayoutEffect or
       // if it was reset automatically with useOptimistic.
+      // 过去过渡对象
       const prevTransition = ReactSharedInternals.T;
+      // 清空过渡对象
       ReactSharedInternals.T = null;
+      // 暂存更新优先级
       const previousPriority = getCurrentUpdatePriority();
+      // 设置离散更新
       setCurrentUpdatePriority(DiscreteEventPriority);
+      // 暂存执行状态
       const prevExecutionContext = executionContext;
+      // 切换状态到提交模式
       executionContext |= CommitContext;
+      // 清空loading清理函数
       root.pendingIndicator = null;
       try {
+        // 执行终止loading
         cleanUpIndicator();
       } catch (x) {
         reportGlobalError(x);
       } finally {
         // Reset the priority to the previous non-sync value.
+        // 恢复上下文
         executionContext = prevExecutionContext;
         setCurrentUpdatePriority(previousPriority);
         ReactSharedInternals.T = prevTransition;
@@ -4257,16 +4273,22 @@ function flushLayoutEffects(): void {
     }
   }
 
+  // 子节点是否到了layout阶段
   const subtreeHasLayoutEffects =
     (finishedWork.subtreeFlags & LayoutMask) !== NoFlags;
+  // 根节点是否到了layout阶段
   const rootHasLayoutEffect = (finishedWork.flags & LayoutMask) !== NoFlags;
 
+  // 如果到了layout阶段
+  // 需要执行生命周期函数、useLayoutEffect、回调、ref和显隐恢复工作
   if (subtreeHasLayoutEffects || rootHasLayoutEffect) {
+    // 暂存上下文和设置更新状态为离散更新
     const prevTransition = ReactSharedInternals.T;
     ReactSharedInternals.T = null;
     const previousPriority = getCurrentUpdatePriority();
     setCurrentUpdatePriority(DiscreteEventPriority);
     const prevExecutionContext = executionContext;
+    // 切换到提交态
     executionContext |= CommitContext;
     try {
       // The next phase is the layout phase, where we call effects that read
@@ -4275,12 +4297,14 @@ function flushLayoutEffects(): void {
       if (enableSchedulingProfiler) {
         markLayoutEffectsStarted(lanes);
       }
+      // 核心内容 提交layout节点的更新
       commitLayoutEffects(finishedWork, root, lanes);
       if (enableSchedulingProfiler) {
         markLayoutEffectsStopped();
       }
     } finally {
       // Reset the priority to the previous non-sync value.
+      // 恢复上下文
       executionContext = prevExecutionContext;
       setCurrentUpdatePriority(previousPriority);
       ReactSharedInternals.T = prevTransition;
@@ -4289,7 +4313,7 @@ function flushLayoutEffects(): void {
 
   const completedRenderEndTime = pendingEffectsRenderEndTime;
   const suspendedCommitReason = pendingSuspendedCommitReason;
-
+  // 性能追踪相关信息
   if (enableProfilerTimer && enableComponentPerformanceTrack) {
     recordCommitEndTime();
     logCommitPhase(
@@ -4300,7 +4324,7 @@ function flushLayoutEffects(): void {
       workInProgressUpdateTask,
     );
   }
-
+  // 切换至下一状态
   pendingEffectsStatus = PENDING_AFTER_MUTATION_PHASE;
 }
 
@@ -5354,9 +5378,11 @@ function retryTimedOutBoundary(boundaryFiber: Fiber, retryLane: Lane) {
   }
 }
 
+// 在执行节点上执行对应的任务 主要是合并任务推入更新队列
 export function retryDehydratedSuspenseBoundary(boundaryFiber: Fiber) {
   const suspenseState: null | SuspenseState = boundaryFiber.memoizedState;
   let retryLane: Lane = NoLane;
+  // 获取任务优先级
   if (suspenseState !== null) {
     retryLane = suspenseState.retryLane;
   }

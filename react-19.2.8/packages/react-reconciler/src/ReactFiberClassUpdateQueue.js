@@ -764,15 +764,20 @@ export function commitHiddenCallbacks<State>(
   }
 }
 
+// 执行setState的回调函数
 export function commitCallbacks<State>(
   updateQueue: UpdateQueue<State>,
   context: any,
 ): void {
+  // 获取setState回调函数
   const callbacks = updateQueue.callbacks;
   if (callbacks !== null) {
+    // 清空
     updateQueue.callbacks = null;
+    // 挨个执行回调函数
     for (let i = 0; i < callbacks.length; i++) {
       const callback = callbacks[i];
+      // 调用call绑定this
       callCallback(callback, context);
     }
   }

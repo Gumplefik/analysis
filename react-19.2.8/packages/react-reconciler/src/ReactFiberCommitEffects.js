@@ -94,6 +94,9 @@ function shouldProfile(current: Fiber): boolean {
   );
 }
 
+// 实际调用commitHookEffectListMount
+// 主要是执行effect函数，保存清理回调
+// 根据hookFlags的标记，执行对应阶段的effect
 export function commitHookLayoutEffects(
   finishedWork: Fiber,
   hookFlags: HookFlags,
@@ -141,7 +144,7 @@ export function commitHookLayoutUnmountEffects(
 
 
 // useInsertionEffect提交执行
-// 样式注入相关 按顺序执行effect的初始化
+// 样式注入相关 按顺序执行effect的初始化以及保存清理回调函数
 // 见 https://react.dev/reference/react/useInsertionEffect
 export function commitHookEffectListMount(
   flags: HookFlags,
@@ -273,6 +276,8 @@ export function commitHookEffectListUnmount(
       const firstEffect = lastEffect.next;
       let effect = firstEffect;
       do {
+        // 这里有个细节，只会执行同个类型的effect
+        // 意味着effect也有不同类型，即不同阶段的effect
         if ((effect.tag & flags) === flags) {
           // Unmount
           const inst = effect.inst;
@@ -351,11 +356,14 @@ export function commitHookPassiveUnmountEffects(
   }
 }
 
+// 执行componentDidMount函数钩子 或者 componentDidUpdate钩子
 export function commitClassLayoutLifecycles(
   finishedWork: Fiber,
+  // 双缓存fiber
   current: Fiber | null,
 ) {
   const instance = finishedWork.stateNode;
+  // 双缓存节点没有的话意味是初始化阶段  所以走的是componentDidMount函数
   if (current === null) {
     // We could update instance props and state here,
     // but instead we rely on them being set during last render.
@@ -498,6 +506,7 @@ export function commitClassLayoutLifecycles(
           instance.componentDidUpdate(
             prevProps,
             prevState,
+            // getSnapshotBeforeUpdate()返回的值 
             instance.__reactInternalSnapshotBeforeUpdate,
           );
         } catch (error) {
@@ -529,12 +538,15 @@ export function commitClassDidMount(finishedWork: Fiber) {
   }
 }
 
+// 执行setState回调函数
 export function commitClassCallbacks(finishedWork: Fiber) {
   // TODO: I think this is now always non-null by the time it reaches the
   // commit phase. Consider removing the type check.
+  // 获取一些state相关的信息和回调函数
   const updateQueue: UpdateQueue<mixed> | null =
     finishedWork.updateQueue as any;
   if (updateQueue !== null) {
+    // 获取dom实例
     const instance = finishedWork.stateNode;
     if (__DEV__) {
       if (
@@ -603,12 +615,16 @@ export function commitClassHiddenCallbacks(finishedWork: Fiber) {
   }
 }
 
+
+// 在根节点上提交setState的回调函数执行
+// 主要是多了instance的获取的特殊处理
 export function commitRootCallbacks(finishedWork: Fiber) {
   // TODO: I think this is now always non-null by the time it reaches the
   // commit phase. Consider removing the type check.
   const updateQueue: UpdateQueue<mixed> | null =
     finishedWork.updateQueue as any;
   if (updateQueue !== null) {
+    // 获取react实例
     let instance = null;
     if (finishedWork.child !== null) {
       switch (finishedWork.child.tag) {
@@ -625,6 +641,7 @@ export function commitRootCallbacks(finishedWork: Fiber) {
       if (__DEV__) {
         runWithFiberInDEV(finishedWork, commitCallbacks, updateQueue, instance);
       } else {
+        // 执行回调函数
         commitCallbacks(updateQueue, instance);
       }
     } catch (error) {
@@ -772,36 +789,54 @@ export function safelyCallComponentWillUnmount(
   }
 }
 
+// 绑定实例到ref上，支持函数ref，返回清理函数
 function commitAttachRef(finishedWork: Fiber) {
+  // 获取ref
   const ref = finishedWork.ref;
+  // 如果有定义ref的话
   if (ref !== null) {
     let instanceToUse;
+    // 根据节点类型选择不同的处理方式
     switch (finishedWork.tag) {
+      // 对于这三类组件需要特殊处理
       case HostHoistable:
       case HostSingleton:
       case HostComponent:
+        // 获取实际应该绑定的dom实例
         instanceToUse = getPublicInstance(finishedWork.stateNode);
         break;
+      // 对于过渡组件 如果开启视图过渡的话 实例就切换为过渡对象
       case ViewTransitionComponent: {
         if (enableViewTransition) {
+          // 获取dom实例
           const instance: ViewTransitionState = finishedWork.stateNode;
+          // 获取props参数
           const props: ViewTransitionProps = finishedWork.memoizedProps;
+          // 获取过渡名称
           const name = getViewTransitionName(props, instance);
           if (instance.ref === null || instance.ref.name !== name) {
+            // 创建过渡对象，并保存引用
             instance.ref = createViewTransitionInstance(name);
           }
+          // 切换实例到过渡对象上
           instanceToUse = instance.ref;
           break;
         }
+        // 常规过渡就是dom实例
         instanceToUse = finishedWork.stateNode;
         break;
       }
+      // 虚拟组件
       case Fragment:
+        // 如果开启了ref
         if (enableFragmentRefs) {
+          // 获取fragment实例
           const instance: null | FragmentInstanceType = finishedWork.stateNode;
           if (instance === null) {
+            // 初始化实例
             finishedWork.stateNode = createFragmentInstance(finishedWork);
           }
+          // 实例就是fragment的实例
           instanceToUse = finishedWork.stateNode;
           break;
         }
@@ -809,6 +844,8 @@ function commitAttachRef(finishedWork: Fiber) {
       default:
         instanceToUse = finishedWork.stateNode;
     }
+    // 如果ref是个函数的话，支持返回ref清理函数
+    // 可以支持引用如地图组件时，保存地图实例，卸载的时候可以清除地图实例，避免内存泄漏
     if (typeof ref === 'function') {
       if (shouldProfile(finishedWork)) {
         try {
@@ -836,12 +873,14 @@ function commitAttachRef(finishedWork: Fiber) {
       }
 
       // $FlowFixMe[incompatible-use] unable to narrow type to the non-function case
+      // 保存实例
       ref.current = instanceToUse;
     }
   }
 }
 
 // Capture errors so they don't interrupt mounting.
+// 带有try catch的绑定ref
 export function safelyAttachRef(
   current: Fiber,
   nearestMountedAncestor: Fiber | null,

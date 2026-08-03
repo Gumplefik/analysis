@@ -91,6 +91,7 @@ export function detachDeletedInstance(node: Instance): void {
   delete (node as any)[internalEventHandlesSetKey];
 }
 
+// 保存fiber节点引用
 export function precacheFiberNode(
   hostInst: Fiber,
   node:

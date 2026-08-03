@@ -70,6 +70,8 @@ import {
   enableFragmentRefsTextNodes,
 } from 'shared/ReactFeatureFlags';
 
+
+// 主要是操作节点的focus和图片的src更新
 export function commitHostMount(finishedWork: Fiber) {
   const type = finishedWork.type;
   const props = finishedWork.memoizedProps;
@@ -85,6 +87,7 @@ export function commitHostMount(finishedWork: Fiber) {
         finishedWork,
       );
     } else {
+      // 主要是操作节点的focus和图片的src更新
       commitMount(instance, type, props, finishedWork);
     }
   } catch (error) {
@@ -107,6 +110,7 @@ export function commitHostHydratedInstance(finishedWork: Fiber) {
         finishedWork,
       );
     } else {
+    // 对文本选项dom引用默认值和value
       commitHydratedInstance(instance, type, props, finishedWork);
     }
   } catch (error) {
@@ -834,6 +838,7 @@ export function commitHostHydratedContainer(
   }
 }
 
+// 复用dom时执行客户端dom的初始化 事件绑定之类的
 export function commitHostHydratedActivity(
   activityInstance: ActivityInstance,
   finishedWork: Fiber,
@@ -853,6 +858,7 @@ export function commitHostHydratedActivity(
   }
 }
 
+// 复用dom时执行客户端dom的初始化 事件绑定之类的
 export function commitHostHydratedSuspense(
   suspenseInstance: SuspenseInstance,
   finishedWork: Fiber,
@@ -872,8 +878,11 @@ export function commitHostHydratedSuspense(
   }
 }
 
+// 初始化根节点对象
 export function commitHostSingletonAcquisition(finishedWork: Fiber) {
+  // 获取dom 
   const singleton = finishedWork.stateNode;
+  // 获取prop
   const props = finishedWork.memoizedProps;
 
   try {
@@ -888,6 +897,7 @@ export function commitHostSingletonAcquisition(finishedWork: Fiber) {
         finishedWork,
       );
     } else {
+      // 初始化根节点对象
       acquireSingletonInstance(
         finishedWork.type,
         props,

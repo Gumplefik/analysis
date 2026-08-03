@@ -94,6 +94,7 @@ export const CacheComponent = 24;
 // Transition tracing 标记：跟踪 Transition 内尚未完成的 Suspense 边界和完成回调。
 export const TracingMarkerComponent = 25;
 // 可提升宿主资源：DOM 中可移动到 head 并去重的 title、meta、style、link、script 等。
+// 就是意思在react组件里写的link之类的标签，在实际dom节点里会被提升到head里面
 export const HostHoistable = 26;
 // 宿主单例：DOM 中全局唯一并复用现有实例的 html、head、body。
 export const HostSingleton = 27;

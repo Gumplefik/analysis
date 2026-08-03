@@ -272,17 +272,29 @@ type SelectionInformation = {
 
 const SUPPRESS_HYDRATION_WARNING = 'suppressHydrationWarning';
 
+// 服务端 Activity 内容的开始标记。
 const ACTIVITY_START_DATA = '&';
+// 服务端 Activity 内容的结束标记。
 const ACTIVITY_END_DATA = '/&';
+// Suspense 开始标记：真实内容已经准备好，可以由客户端接管。
 const SUSPENSE_START_DATA = '$';
+// Suspense 内容范围的结束标记。
 const SUSPENSE_END_DATA = '/$';
+// Suspense 正在等待：页面暂时显示 fallback，服务端真实内容还没有准备好。
 const SUSPENSE_PENDING_START_DATA = '$?';
+// Suspense 真实内容已经准备好并进入显示队列，但还没有替换掉 fallback。
 const SUSPENSE_QUEUED_START_DATA = '$~';
+// 服务端无法完成该 Suspense，当前显示 fallback，真实内容交给客户端重新渲染。
 const SUSPENSE_FALLBACK_START_DATA = '$!';
+// 标记当前服务端边界修改过 html 节点，清除边界时需要同时重置 html。
 const PREAMBLE_CONTRIBUTION_HTML = 'html';
+// 标记当前服务端边界修改过 body 节点，清除边界时需要同时重置 body。
 const PREAMBLE_CONTRIBUTION_BODY = 'body';
+// 标记当前服务端边界修改过 head 节点，清除边界时需要同时重置 head。
 const PREAMBLE_CONTRIBUTION_HEAD = 'head';
+// 服务端返回的表单状态与客户端当前表单状态匹配。
 const FORM_STATE_IS_MATCHING = 'F!';
+// 服务端返回的表单状态与客户端当前表单状态不匹配。
 const FORM_STATE_IS_NOT_MATCHING = 'F';
 
 const DOCUMENT_READY_STATE_LOADING = 'loading';
@@ -884,6 +896,8 @@ function handleErrorInNextTick(error: any) {
 
 export const supportsMutation = true;
 
+
+// 主要是操作节点的focus和图片的src更新
 export function commitMount(
   domElement: Instance,
   type: string,
@@ -901,6 +915,7 @@ export function commitMount(
     case 'input':
     case 'select':
     case 'textarea':
+      // 执行autoFocus
       if (newProps.autoFocus) {
         (
           domElement as any as
@@ -921,6 +936,7 @@ export function commitMount(
       // only need to assign one. And Safari just never triggers a new load event which means this technique
       // is already a noop regardless of which properties are assigned. We should revisit if browsers update
       // this heuristic in the future.
+      // 更新图片的src
       if (newProps.src) {
         const src = (newProps as any).src;
         if (enableSrcObject && typeof src === 'object') {
@@ -930,6 +946,7 @@ export function commitMount(
           // duplicated work.
           // TODO: We could maybe detect if load hasn't fired yet and if so reuse the URL.
           try {
+            // 支持File、Blob 或 MediaSource 对象。
             setSrcObject(domElement, type, src);
             return;
           } catch (x) {
@@ -939,6 +956,7 @@ export function commitMount(
           }
         }
         (domElement as any as HTMLImageElement).src = src;
+        // 支持srcSet候选
       } else if (newProps.srcSet) {
         (domElement as any as HTMLImageElement).srcset = (
           newProps as any
@@ -949,6 +967,9 @@ export function commitMount(
   }
 }
 
+
+// 处理文本选项和图片的事件
+// 对文本选项dom引用默认值和value
 export function commitHydratedInstance(
   domElement: Instance,
   type: string,
@@ -4213,6 +4234,7 @@ export function registerSuspenseInstanceRetry(
   callback: () => void,
 ) {
   const ownerDocument = instance.ownerDocument;
+  // 如果数据ready就更新回调函数
   if (instance.data === SUSPENSE_QUEUED_START_DATA) {
     // The Fizz runtime has already queued this boundary for reveal. We wait for it
     // to be revealed and then retries.
@@ -4221,17 +4243,20 @@ export function registerSuspenseInstanceRetry(
     // The Fizz runtime must have put this boundary into client render or complete
     // state after the render finished but before it committed. We need to call the
     // callback now rather than wait
+    // 等待数据或者根节点在loading
     instance.data !== SUSPENSE_PENDING_START_DATA ||
     // The boundary is still in pending status but the document has finished loading
     // before we could register the event handler that would have scheduled the retry
     // on load so we call the callback now.
     ownerDocument.readyState !== DOCUMENT_READY_STATE_LOADING
   ) {
+    // 执行回调函数
     callback();
   } else {
     // We're still in pending status and the document is still loading so we attach
     // a listener to the document load even and expose the retry on the instance for
     // the Fizz runtime to trigger if it ends up resolving this boundary
+    // 等待DCL后执行回调函数
     const listener = () => {
       callback();
       ownerDocument.removeEventListener('DOMContentLoaded', listener);
@@ -4845,10 +4870,12 @@ export function resolveSingletonInstance(
   }
 }
 
+// 初始化根节点对象
 export function acquireSingletonInstance(
   type: string,
   props: Props,
   instance: Instance,
+  // fiber节点
   internalInstanceHandle: Object,
 ): void {
   if (__DEV__) {
@@ -4885,14 +4912,17 @@ export function acquireSingletonInstance(
       }
     }
   }
-
+  // 一看看过来感觉有死循环，实力上由于这个是从dom上获取的，应该是个引用对象，所以删除一个长度就会减少
+  // 但考虑到兼容问题，所以如果返回的不是引用对象则有可能成为死循环
   const attributes = instance.attributes;
   while (attributes.length) {
     instance.removeAttributeNode(attributes[0]);
   }
-
+  // 初始化属性对象
   setInitialProperties(instance, type, props);
+  // 保存fiber节点引用
   precacheFiberNode(internalInstanceHandle, instance);
+  // 保存props引用
   updateFiberProps(instance, props);
 }
 

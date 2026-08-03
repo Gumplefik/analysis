@@ -627,60 +627,91 @@ function commitBeforeMutationEffectsDeletion(
   }
 }
 
+// 函数组件
+// → 执行useLayoutEffect
+// Class组件
+// → 执行componentDidMount/componentDidUpdate
+// → 执行setState回调
+// → 绑定ref
+// HostComponent
+// → 处理首次挂载后的操作，例如autoFocus
+// → 处理Hydration完成
+// → 绑定DOM ref
+// HostRoot
+// → 执行Root更新回调
+// Suspense/Activity
+// → 执行Hydration完成回调
+// Offscreen
+// → 隐藏时跳过Layout工作
+// → 从隐藏恢复显示时调用reappearLayoutEffects
 function commitLayoutEffectOnFiber(
   finishedRoot: FiberRoot,
   current: Fiber | null,
   finishedWork: Fiber,
   committedLanes: Lanes,
 ): void {
+  // 记录当前 Fiber 在 Commit阶段执行 Effect时的性能和异常信息。
   const prevEffectStart = pushComponentEffectStart();
   const prevEffectDuration = pushComponentEffectDuration();
   const prevEffectErrors = pushComponentEffectErrors();
   const prevEffectDidSpawnUpdate = pushComponentEffectDidSpawnUpdate();
   // When updating this function, also update reappearLayoutEffects, which does
   // most of the same things when an offscreen tree goes from hidden -> visible.
+  // 标记以下任务：Placement | Update | Ref;
   const flags = finishedWork.flags;
   switch (finishedWork.tag) {
     case FunctionComponent:
     case ForwardRef:
     case SimpleMemoComponent: {
+      // 深度遍历子节点
       recursivelyTraverseLayoutEffects(
         finishedRoot,
         finishedWork,
         committedLanes,
       );
+      // 如果有更新内容的话
       if (flags & Update) {
+        // 执行HookLayout | HookHasEffect两个阶段的effect初始化，保存清理函数
         commitHookLayoutEffects(finishedWork, HookLayout | HookHasEffect);
       }
       break;
     }
+    // 类组件
     case ClassComponent: {
+      // 深度遍历子节点
       recursivelyTraverseLayoutEffects(
         finishedRoot,
         finishedWork,
         committedLanes,
       );
+      // 处理类函数的事件钩子
       if (flags & Update) {
+        // 执行componentDidMount/componentDidUpdate
         commitClassLayoutLifecycles(finishedWork, current);
       }
 
       if (flags & Callback) {
+        // 执行setState回调函数
         commitClassCallbacks(finishedWork);
       }
 
       if (flags & Ref) {
+        // 绑定ref 支持函数ref，类似effect用法
         safelyAttachRef(finishedWork, finishedWork.return);
       }
       break;
     }
+    // 根节点
     case HostRoot: {
       const prevProfilerEffectDuration = pushNestedEffectDurations();
+      // 深度遍历子节点
       recursivelyTraverseLayoutEffects(
         finishedRoot,
         finishedWork,
         committedLanes,
       );
       if (flags & Callback) {
+        // 执行setState回调函数
         commitRootCallbacks(finishedWork);
       }
       if (enableProfilerTimer && enableProfilerCommitHooks) {
@@ -690,6 +721,7 @@ function commitLayoutEffectOnFiber(
       }
       break;
     }
+    // html head body 节点
     case HostSingleton: {
       // $FlowFixMe[constant-condition]
       if (supportsSingletons) {
@@ -701,6 +733,7 @@ function commitLayoutEffectOnFiber(
         // is it seemingly requires an extra traversal because we need to move the
         // disappear effect into a phase before the appear phase
         if (current === null && flags & Update) {
+          // 初始化根节点对象
           // Unlike in the reappear path we only acquire on new mount
           commitHostSingletonAcquisition(finishedWork);
         }
@@ -708,8 +741,10 @@ function commitLayoutEffectOnFiber(
       }
       // Fallthrough
     }
+    // 提升节点
     case HostHoistable:
     case HostComponent: {
+      // 深度遍历组件子节点
       recursivelyTraverseLayoutEffects(
         finishedRoot,
         finishedWork,
@@ -720,19 +755,25 @@ function commitLayoutEffectOnFiber(
       // (eg DOM renderer may schedule auto-focus for inputs and form controls).
       // These effects should only be committed when components are first mounted,
       // aka when there is no current/alternate.
+      // 组件需要新建
       if (current === null) {
         if (flags & Update) {
+          // 客户端模式
+          // 主要是操作节点的focus和图片的src更新
           commitHostMount(finishedWork);
         } else if (flags & Hydrate) {
+          // 对文本选项节点引用默认值和value
           commitHostHydratedInstance(finishedWork);
         }
       }
 
       if (flags & Ref) {
+        // 绑定ref 不过这里的节点是父级
         safelyAttachRef(finishedWork, finishedWork.return);
       }
       break;
     }
+    // 性能追踪忽略
     case Profiler: {
       // TODO: Should this fire inside an offscreen tree? Or should it wait to
       // fire when the tree becomes visible again.
@@ -770,24 +811,29 @@ function commitLayoutEffectOnFiber(
       }
       break;
     }
+    // toggle组件
     case ActivityComponent: {
+      // 递归遍历子节点
       recursivelyTraverseLayoutEffects(
         finishedRoot,
         finishedWork,
         committedLanes,
       );
       if (flags & Update) {
+        // 处理切换显示的事件绑定之类的
         commitActivityHydrationCallbacks(finishedRoot, finishedWork);
       }
       break;
     }
     case SuspenseComponent: {
+      // 递归遍历子节点
       recursivelyTraverseLayoutEffects(
         finishedRoot,
         finishedWork,
         committedLanes,
       );
       if (flags & Update) {
+        // 初始界面切换的事件绑定之类的，和activity基本一致
         commitSuspenseHydrationCallbacks(finishedRoot, finishedWork);
       }
       if (flags & Callback) {
@@ -795,40 +841,53 @@ function commitLayoutEffectOnFiber(
         // We could in theory assume the dehydrated state but we recheck it for
         // certainty.
         const finishedState: SuspenseState | null = finishedWork.memoizedState;
+        // 非空意味着还有一些数据没ready
         if (finishedState !== null) {
           const dehydrated = finishedState.dehydrated;
           if (dehydrated !== null) {
             // Register a callback to retry this boundary once the server has sent the result.
+            // 绑定上下文创建重试函数
             const retry = retryDehydratedSuspenseBoundary.bind(
               null,
               finishedWork,
             );
+            // 执行callback 兼容suspense 是根节点的场景，DCL后执行界面初始化之类的
             registerSuspenseInstanceRetry(dehydrated, retry);
           }
         }
       }
       break;
     }
+    // 主要服务于suspense和activity
     case OffscreenComponent: {
+      // 当前是否在并发模式
       const isModernRoot =
         disableLegacyMode || (finishedWork.mode & ConcurrentMode) !== NoMode;
+      // 如果是并发模式
       if (isModernRoot) {
+        // 数据还没有ready或者说还没到显示的时候
         const isHidden = finishedWork.memoizedState !== null;
+        // 现在是否需要隐藏子节点，依赖于父节点显示状态和数据ready
         const newOffscreenSubtreeIsHidden =
           isHidden || offscreenSubtreeIsHidden;
         if (newOffscreenSubtreeIsHidden) {
           // The Offscreen tree is hidden. Skip over its layout effects.
         } else {
+          // 如果需要显示节点
           // The Offscreen tree is visible.
-
+          // 存在旧的fiber并且是隐藏状态
           const wasHidden = current !== null && current.memoizedState !== null;
+          // 以前是否是隐藏的
           const newOffscreenSubtreeWasHidden =
             wasHidden || offscreenSubtreeWasHidden;
+          // 保存上下文状态切换上下文
           const prevOffscreenSubtreeIsHidden = offscreenSubtreeIsHidden;
+          // 外层是否已经隐藏
           const prevOffscreenSubtreeWasHidden = offscreenSubtreeWasHidden;
           offscreenSubtreeIsHidden = newOffscreenSubtreeIsHidden;
           offscreenSubtreeWasHidden = newOffscreenSubtreeWasHidden;
-
+          // 如果以前隐藏 
+          // 进入当前组件前，外层子树没有隐藏
           if (offscreenSubtreeWasHidden && !prevOffscreenSubtreeWasHidden) {
             // This is the root of a reappearing boundary. As we continue
             // traversing the layout effects, we must also re-mount layout
@@ -836,11 +895,13 @@ function commitLayoutEffectOnFiber(
             // hidden. So this is a superset of the normal commitLayoutEffects.
             const includeWorkInProgressEffects =
               (finishedWork.subtreeFlags & LayoutMask) !== NoFlags;
+              // 递归遍历 恢复之前因为隐藏而停掉的布局相关功能。
             recursivelyTraverseReappearLayoutEffects(
               finishedRoot,
               finishedWork,
               includeWorkInProgressEffects,
             );
+            // 性能追踪相关
             if (
               enableProfilerTimer &&
               enableProfilerCommitHooks &&
@@ -857,16 +918,19 @@ function commitLayoutEffectOnFiber(
               );
             }
           } else {
+            // 递归遍历子节点
             recursivelyTraverseLayoutEffects(
               finishedRoot,
               finishedWork,
               committedLanes,
             );
           }
+          // 切换上下文
           offscreenSubtreeIsHidden = prevOffscreenSubtreeIsHidden;
           offscreenSubtreeWasHidden = prevOffscreenSubtreeWasHidden;
         }
       } else {
+        // 递归遍历子节点
         recursivelyTraverseLayoutEffects(
           finishedRoot,
           finishedWork,
@@ -882,12 +946,14 @@ function commitLayoutEffectOnFiber(
             trackNamedViewTransition(finishedWork);
           }
         }
+        // 深度遍历子节点
         recursivelyTraverseLayoutEffects(
           finishedRoot,
           finishedWork,
           committedLanes,
         );
         if (flags & Ref) {
+          // 绑定ref
           safelyAttachRef(finishedWork, finishedWork.return);
         }
         break;
@@ -895,6 +961,7 @@ function commitLayoutEffectOnFiber(
       break;
     }
     case Fragment:
+      // 虚拟组件主要是绑定ref
       if (enableFragmentRefs) {
         if (flags & Ref) {
           safelyAttachRef(finishedWork, finishedWork.return);
@@ -902,6 +969,7 @@ function commitLayoutEffectOnFiber(
       }
     // Fallthrough
     default: {
+      // 默认模式递归所以子节点
       recursivelyTraverseLayoutEffects(
         finishedRoot,
         finishedWork,
@@ -910,7 +978,7 @@ function commitLayoutEffectOnFiber(
       break;
     }
   }
-
+  // 性能追踪相关
   if (
     enableProfilerTimer &&
     enableProfilerCommitHooks &&
@@ -948,7 +1016,7 @@ function commitLayoutEffectOnFiber(
       }
     }
   }
-
+  // 性能追踪相关
   popComponentEffectStart(prevEffectStart);
   popComponentEffectDuration(prevEffectDuration);
   popComponentEffectErrors(prevEffectErrors);
@@ -1988,6 +2056,8 @@ function commitSuspenseCallback(finishedWork: Fiber) {
   }
 }
 
+
+// 执行组件从隐藏切换到显示后事件之类的初始化，以及执行onHydrated回调
 function commitActivityHydrationCallbacks(
   finishedRoot: FiberRoot,
   finishedWork: Fiber,
@@ -1997,12 +2067,19 @@ function commitActivityHydrationCallbacks(
     return;
   }
   const newState: ActivityState | null = finishedWork.memoizedState;
+  // 新的state为空
   if (newState === null) {
     const current = finishedWork.alternate;
+    // 备用节点非空
     if (current !== null) {
+      // 获取旧的state节点
       const prevState: ActivityState | null = current.memoizedState;
+      // 如果以前非空，就是意思之前隐藏的   隐藏的时候才会有这个state对象
+      // 之前隐藏，现在就切换为显示
+      // 显示的时候dom复用，所以要进行相关的事件初始化之类的
       if (prevState !== null) {
         const activityInstance = prevState.dehydrated;
+        // dom复用后执行初始化
         commitHostHydratedActivity(activityInstance, finishedWork);
         if (enableSuspenseCallback) {
           try {
@@ -2010,6 +2087,7 @@ function commitActivityHydrationCallbacks(
             const hydrationCallbacks = finishedRoot.hydrationCallbacks;
             if (hydrationCallbacks !== null) {
               const onHydrated = hydrationCallbacks.onHydrated;
+              // 执行onHydrated回调函数
               if (onHydrated) {
                 onHydrated(activityInstance);
               }
@@ -2023,6 +2101,7 @@ function commitActivityHydrationCallbacks(
   }
 }
 
+// 和activity组件类似 逻辑复用一套
 function commitSuspenseHydrationCallbacks(
   finishedRoot: FiberRoot,
   finishedWork: Fiber,
@@ -2031,19 +2110,25 @@ function commitSuspenseHydrationCallbacks(
   if (!supportsHydration) {
     return;
   }
+  // state为空意味着可能现在要显示节点了 这里主要保存了是suspense的一些信息，例如等待数据ready的回调函数
   const newState: SuspenseState | null = finishedWork.memoizedState;
   if (newState === null) {
     const current = finishedWork.alternate;
+    // current非空意味着已经进行过suspense组件的初始化了
     if (current !== null) {
       const prevState: SuspenseState | null = current.memoizedState;
+      // 以前是等待数据ready，现在没有需要ready 的东西了
+      // 那就意味着可以显示界面了
       if (prevState !== null) {
         const suspenseInstance = prevState.dehydrated;
         if (suspenseInstance !== null) {
+          // dom复用后执行初始化
           commitHostHydratedSuspense(suspenseInstance, finishedWork);
           if (enableSuspenseCallback) {
             try {
               // TODO: Delete this feature. It's not properly covered by DEV features.
               const hydrationCallbacks = finishedRoot.hydrationCallbacks;
+              // 一样的执行onHydrated
               if (hydrationCallbacks !== null) {
                 const onHydrated = hydrationCallbacks.onHydrated;
                 if (onHydrated) {
@@ -3390,23 +3475,28 @@ function commitAfterMutationEffectsOnFiber(
   }
 }
 
+// layout阶段执行的内容
 export function commitLayoutEffects(
   finishedWork: Fiber,
   root: FiberRoot,
   committedLanes: Lanes,
 ): void {
+  // 切换执行上下文
   inProgressLanes = committedLanes;
   inProgressRoot = root;
-
+  // effect计时器
   resetComponentEffectTimers();
-
+  // 获取双缓存节点
   const current = finishedWork.alternate;
+  // 执行layout阶段的effect
   commitLayoutEffectOnFiber(root, current, finishedWork, committedLanes);
-
+  // 清空上下文
   inProgressLanes = null;
   inProgressRoot = null;
 }
 
+
+// 调用commitLayoutEffectOnFiber深度遍历子节点
 function recursivelyTraverseLayoutEffects(
   root: FiberRoot,
   parentFiber: Fiber,
@@ -3560,6 +3650,7 @@ function recursivelyTraverseDisappearLayoutEffects(parentFiber: Fiber) {
   }
 }
 
+// Offscreen子树从隐藏变成显示时，恢复之前因为隐藏而停掉的布局相关功能。
 export function reappearLayoutEffects(
   finishedRoot: FiberRoot,
   current: Fiber | null,
@@ -3789,6 +3880,8 @@ export function reappearLayoutEffects(
   popComponentEffectDidSpawnUpdate(prevEffectDidSpawnUpdate);
 }
 
+
+// TODO 待分析
 function recursivelyTraverseReappearLayoutEffects(
   finishedRoot: FiberRoot,
   parentFiber: Fiber,

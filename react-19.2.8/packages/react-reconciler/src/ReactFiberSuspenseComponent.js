@@ -28,17 +28,24 @@ import {
 //     isSuspenseInstanceFallback to query the reason for being dehydrated.
 // - A null dehydrated field means it's blocked by something suspending and
 //   we're currently showing a fallback instead.
+// SuspenseState 非空表示真实组件暂时不能正常显示：
+// dehydrated 为空时表示组件正在等待数据，页面显示 fallback（如 Loading）；
+// dehydrated 非空时表示页面已有服务端内容，正在等待客户端 React 接管。
 export type SuspenseState = {
   // If this boundary is still dehydrated, we store the SuspenseInstance
   // here to indicate that it is dehydrated (flag) and for quick access
   // to check things like isSuspenseInstancePending.
+  // 服务端 Suspense 内容的 DOM 边界；为空表示不是等待接管服务端内容，而是在显示 fallback。
   dehydrated: null | SuspenseInstance,
+  // 保存服务端渲染时所在的树位置，客户端接管时用它匹配相同位置并生成一致的 useId。
   treeContext: null | TreeContext,
   // Represents the lane we should attempt to hydrate a dehydrated boundary at.
   // OffscreenLane is the default for dehydrated boundaries.
   // NoLane is the default for normal boundaries, which turns into "normal" pri.
+  // 再次尝试接管服务端内容时使用的任务优先级。
   retryLane: Lane,
   // Stashed Errors that happened while attempting to hydrate this boundary.
+  // 接管服务端内容时发生的错误，暂存在这里，后续统一处理或上报。
   hydrationErrors: Array<CapturedValue<mixed>> | null,
 };
 

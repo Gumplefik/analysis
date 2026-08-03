@@ -548,6 +548,7 @@ type RenderTaskFn = (didTimeout: boolean) => RenderTaskFn | null;
 
 
 // schdule调度任务 执行渲染逻辑
+// TODO 待完善注释
 function performWorkOnRootViaSchedulerTask(
   root: FiberRoot,
   didTimeout: boolean,

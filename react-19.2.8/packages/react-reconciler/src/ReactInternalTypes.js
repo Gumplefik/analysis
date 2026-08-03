@@ -144,6 +144,11 @@ export type Fiber = {
   memoizedProps: any, // The props used to create the output.
 
   // A queue of state updates and callbacks.
+  // 当前 Fiber等待处理或提交的更新相关数据。
+  // 1. baseState 处理低优先级更新前使用的基础状态
+  // 2. firstBaseUpdate lastBaseUpdate 暂时没有被处理的更新链表
+  // 3. shared 新加入的setState更新 更新所属的Lane Offscreen隐藏期间延迟执行的回调
+  // 4. callbacks 本次提交后需要执行的setState回调
   updateQueue: mixed,
 
   // The state used to create the output
