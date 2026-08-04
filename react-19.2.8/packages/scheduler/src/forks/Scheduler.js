@@ -471,6 +471,7 @@ function shouldYieldToHost(): boolean {
   return true;
 }
 
+// 调度实现 切换needsPaint变量
 function requestPaint() {
   // $FlowFixMe[constant-condition]
   if (enableRequestPaint) {

@@ -146,6 +146,7 @@ export const transitionLaneExpirationMs = 5000;
  * Enables a new error detection for infinite render loops from updates caused
  * by setState or similar outside of the component owning the state.
  */
+// 启用新的错误检测，以检测因更新而导致的无限渲染循环 通过 setState 或拥有状态的组件外部
 export const enableInfiniteRenderLoopDetection: boolean = false;
 /**
  * When `enableInfiniteRenderLoopDetection` is on, forces the detection

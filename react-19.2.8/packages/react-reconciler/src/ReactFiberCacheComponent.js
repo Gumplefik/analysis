@@ -100,6 +100,7 @@ export function retainCache(cache: Cache) {
 }
 
 // Cleanup a cache instance, potentially freeing it if there are no more references
+      // 计数自减 为0则释放缓存
 export function releaseCache(cache: Cache) {
   cache.refCount--;
   if (__DEV__) {

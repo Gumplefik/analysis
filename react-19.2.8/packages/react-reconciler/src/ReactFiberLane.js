@@ -413,6 +413,7 @@ export function getNextLanes(
   return nextLanes;
 }
 
+// 有着特殊逻辑的获取下一个任务
 export function getNextLanesToFlushSync(
   root: FiberRoot,
   extraLanesToForceSync: Lane | Lanes,
@@ -466,14 +467,19 @@ export function checkIfRootIsPrerendering(
   root: FiberRoot,
   renderLanes: Lanes,
 ): boolean {
+  // 所有未完成任务
   const pendingLanes = root.pendingLanes;
+  // 等待资源的任务
   const suspendedLanes = root.suspendedLanes;
+  // 资源已经就绪、可以重试的任务
   const pingedLanes = root.pingedLanes;
   // Remove lanes that are suspended (but not pinged)
+  // 未完成任务 -（仍在挂起并且没有被唤醒的任务）
   const unblockedLanes = pendingLanes & ~(suspendedLanes & ~pingedLanes);
 
   // If there are no unsuspended or pinged lanes, that implies that we're
   // performing a prerender.
+  // 检查当前 renderLanes 中有没有可正常执行的任务。
   return (unblockedLanes & renderLanes) === 0;
 }
 
@@ -740,6 +746,7 @@ export function includesOnlyHydrationOrOffscreenLanes(lanes: Lanes): boolean {
   return (lanes & (HydrationLanes | OffscreenLane)) === lanes;
 }
 
+// 检查是否所有任务都是低优先级，和视图过渡相关的任务
 export function includesOnlyViewTransitionEligibleLanes(lanes: Lanes): boolean {
   return (lanes & (TransitionLanes | RetryLanes | IdleLane)) === lanes;
 }

@@ -113,7 +113,7 @@ let isFlushingWork: boolean = false;
 
 let currentEventTransitionLane: Lane = NoLane;
 
-// 假如全局调度链表
+// Fiber 产生更新后，确保它所属的 Root 已经进入 React 的待调度队列。
 export function ensureRootIsScheduled(root: FiberRoot): void {
   // This function is called whenever a root receives an update. It does two
   // things 1) it ensures the root is in the root schedule, and 2) it ensures
@@ -138,6 +138,7 @@ export function ensureRootIsScheduled(root: FiberRoot): void {
   // Any time a root received an update, we set this to true until the next time
   // we process the schedule. If it's false, then we can quickly exit flushSync
   // without consulting the schedule.
+    // 2. 标记可能存在同步任务
   mightHavePendingSyncWork = true;
 
   ensureScheduleIsScheduled();
@@ -160,6 +161,7 @@ export function ensureScheduleIsScheduled(): void {
     // We're inside an `act` scope.
     if (!didScheduleMicrotask_act) {
       didScheduleMicrotask_act = true;
+      // 3. 安排一个微任务，稍后统一处理 Root 链表
       scheduleImmediateRootScheduleTask();
     }
   } else {
@@ -178,7 +180,7 @@ export function flushSyncWorkOnAllRoots() {
   flushSyncWorkAcrossRoots_impl(NoLanes, false);
 }
 
-// legacy模式才会进去
+// legacy模式同步更新
 export function flushSyncWorkOnLegacyRootsOnly() {
   // This is allowed to be called synchronously, but the caller should check
   // the execution context first.
@@ -187,10 +189,13 @@ export function flushSyncWorkOnLegacyRootsOnly() {
   }
 }
 
+
+// 遍历 firstScheduledRoot 链表，把各个 Root 上需要立即完成的同步任务全部执行掉。
 function flushSyncWorkAcrossRoots_impl(
   syncTransitionLanes: Lanes | Lane,
   onlyLegacy: boolean,
 ) {
+  // 已清空任务或者没有同步任务就退出
   if (isFlushingWork) {
     // Prevent reentrancy.
     // TODO: Is this overly defensive? The callers must check the execution
@@ -206,27 +211,41 @@ function flushSyncWorkAcrossRoots_impl(
   // There may or may not be synchronous work scheduled. Let's check.
   let didPerformSomeWork;
   isFlushingWork = true;
+  // 循环检查是否有任务需要执行
   do {
+    // 检查标记变量
     didPerformSomeWork = false;
+    // 获取第一个fiberRoot节点
     let root = firstScheduledRoot;
+    // 如果非空
     while (root !== null) {
+      // 纯同步模式并且（关闭了legacy支持或者更节点不是leagacy节点）就退出
+      // 只有leagacyRoot模式下第一个变量为true
       if (onlyLegacy && (disableLegacyMode || root.tag !== LegacyRoot)) {
         // Skip non-legacy roots.
       } else {
+        // 如果有同步的过渡任务
         if (syncTransitionLanes !== NoLanes) {
+          // 获取下一个任务
           const nextLanes = getNextLanesToFlushSync(root, syncTransitionLanes);
+          // 如果还有任务的话标记还有还有任务需要执行
           if (nextLanes !== NoLanes) {
             // This root has pending sync work. Flush it now.
             didPerformSomeWork = true;
+            // 执行更新逻辑
             performSyncWorkOnRoot(root, nextLanes);
           }
         } else {
+          // 获取当前的工作节点
           const workInProgressRoot = getWorkInProgressRoot();
+          // 获取当前的任务集合
           const workInProgressRootRenderLanes =
             getWorkInProgressRootRenderLanes();
+            // 是否还有要提交的任务
           const rootHasPendingCommit =
             root.cancelPendingCommit !== null ||
             root.timeoutHandle !== noTimeout;
+          // 获取下一个任务
           const nextLanes = getNextLanes(
             root,
             root === workInProgressRoot
@@ -234,6 +253,9 @@ function flushSyncWorkAcrossRoots_impl(
               : NoLanes,
             rootHasPendingCommit,
           );
+          // 如果有同步任务
+          // 或者开启了手势过渡并且下一个任务是手势渲染
+          // 有需要恢复执行的任务 suspense回调之类的
           if (
             (includesSyncLane(nextLanes) ||
               (enableGestureTransition && isGestureRender(nextLanes))) &&
@@ -241,6 +263,7 @@ function flushSyncWorkAcrossRoots_impl(
           ) {
             // This root has pending sync work. Flush it now.
             didPerformSomeWork = true;
+            // 执行更新
             performSyncWorkOnRoot(root, nextLanes);
           }
         }
@@ -646,19 +669,23 @@ function performWorkOnRootViaSchedulerTask(
   return null;
 }
 
+// 同步渲染节点
 function performSyncWorkOnRoot(root: FiberRoot, lanes: Lanes) {
   // This is the entry point for synchronous tasks that don't go
   // through Scheduler.
+  // 又执行一次渲染清空
   const didFlushPassiveEffects = flushPendingEffects();
   if (didFlushPassiveEffects) {
     // If passive effects were flushed, exit to the outer work loop in the root
     // scheduler, so we can recompute the priority.
     return null;
   }
+  // 性能追踪
   if (enableProfilerTimer && enableProfilerNestedUpdatePhase) {
     syncNestedUpdateFlag();
   }
   const forceSync = true;
+  // 真正执行某个 Root 上指定 Lane 的渲染任务，并根据渲染结果决定暂停、重试还是提交。
   performWorkOnRoot(root, lanes, forceSync);
 }
 

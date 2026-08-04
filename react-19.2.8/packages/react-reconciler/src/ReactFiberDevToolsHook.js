@@ -108,6 +108,7 @@ export function onScheduleRoot(root: FiberRoot, children: ReactNodeList) {
   }
 }
 
+// 执行onCommitFiberRoot函数钩子，服务于devtool
 export function onCommitRoot(root: FiberRoot, eventPriority: EventPriority) {
   if (injectedHook && typeof injectedHook.onCommitFiberRoot === 'function') {
     try {

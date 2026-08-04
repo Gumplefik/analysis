@@ -829,11 +829,21 @@ let rootWithNestedUpdates: FiberRoot | null = null;
 let isFlushingPassiveEffects = false;
 let didScheduleUpdateDuringPassiveEffects = false;
 
+// 没有发生嵌套更新。
 const NO_NESTED_UPDATE = 0;
+// 本次渲染结束后，又发现了同步更新任务。
+// componentDidUpdate() {
+//   this.setState(...); // 每次更新完成后再次同步更新
+// }
 const NESTED_UPDATE_SYNC_LANE = 1;
+// React 明确记录到：在当前渲染阶段或提交阶段内部，又产生了一次更新。
+// function App() {
+//   setState(...); // 渲染组件时再次更新
+// }
 const NESTED_UPDATE_PHASE_SPAWN = 2;
 let nestedUpdateKind: 0 | 1 | 2 = NO_NESTED_UPDATE;
 
+// 当连续嵌套更新超过 50 次时，React 根据 nestedUpdateKind 判断是哪类死循环，并输出相应的错误信息。
 const NESTED_PASSIVE_UPDATE_LIMIT = 50;
 let nestedPassiveUpdateCount: number = 0;
 let rootWithPassiveNestedUpdates: FiberRoot | null = null;
@@ -1231,6 +1241,8 @@ export function isUnsafeClassRenderPhaseUpdate(fiber: Fiber): boolean {
   return (executionContext & RenderContext) !== NoContext;
 }
 
+// TODO 待注释
+// 真正执行某个 Root 上指定 Lane 的渲染任务，并根据渲染结果决定暂停、重试还是提交。
 export function performWorkOnRoot(
   root: FiberRoot,
   lanes: Lanes,
@@ -4299,6 +4311,7 @@ function flushLayoutEffects(): void {
       }
       // 核心内容 提交layout节点的更新
       commitLayoutEffects(finishedWork, root, lanes);
+      // 性能追踪
       if (enableSchedulingProfiler) {
         markLayoutEffectsStopped();
       }
@@ -4328,7 +4341,18 @@ function flushLayoutEffects(): void {
   pendingEffectsStatus = PENDING_AFTER_MUTATION_PHASE;
 }
 
+
+// 结束本次Commit状态
+// → 请求浏览器绘制
+// → 安排useEffect
+// → 清理临时引用和缓存
+// → 完成View Transition
+// → 上报错误和DevTools
+// → 调度剩余任务
+// → 重放Hydration事件
+// → 执行Commit中新产生的同步更新
 function flushSpawnedWork(): void {
+  // 检查状态
   if (
     pendingEffectsStatus !== PENDING_SPAWNED_WORK &&
     // If a startViewTransition times out, we might flush this earlier than
@@ -4337,6 +4361,7 @@ function flushSpawnedWork(): void {
   ) {
     return;
   }
+  // 性能追踪相关
   if (enableProfilerTimer && enableComponentPerformanceTrack) {
     // If we didn't skip the after mutation phase, when is means we started an animation.
     const startedAnimation = pendingEffectsStatus === PENDING_SPAWNED_WORK;
@@ -4355,41 +4380,54 @@ function flushSpawnedWork(): void {
       }
     }
   }
-
+  // 重置当前状态
   pendingEffectsStatus = NO_PENDING_EFFECTS;
 
+  // 获取视图过渡的对象
   const committedViewTransition = pendingViewTransition;
   pendingViewTransition = null; // The view transition has now fully started.
 
   // Tell Scheduler to yield at the end of the frame, so the browser has an
   // opportunity to paint.
+  // 请求浏览器绘制 切换needsPaint为true 服务于schedule
   requestPaint();
 
+  // 获取fiberroot
   const root = pendingEffectsRoot;
+  // 获取commit节点
   const finishedWork = pendingFinishedWork;
+  // 获取任务集合
   const lanes = pendingEffectsLanes;
+  // 获取错误记录
   const recoverableErrors = pendingRecoverableErrors;
+  // 本次提交有否有新的更新 在特殊的钩子函数会产生更新
   const didIncludeRenderPhaseUpdate = pendingDidIncludeRenderPhaseUpdate;
 
+  // 检查任务是否都是过渡先关的 然后觉得返回哪些任务集合，用于后面判断是否有清空任务
   const passiveSubtreeMask =
     enableViewTransition && includesOnlyViewTransitionEligibleLanes(lanes)
       ? PassiveTransitionMask
       : PassiveMask;
+  // 检查是否清空了常规任务 判断还有没有任务要执行
   const rootDidHavePassiveEffects = // If this subtree rendered with profiling this commit, we need to visit it to log it.
     (enableProfilerTimer &&
       enableComponentPerformanceTrack &&
       finishedWork.actualDuration !== 0) ||
+      // 子节点和父节点还有剩余的任务
     (finishedWork.subtreeFlags & passiveSubtreeMask) !== NoFlags ||
     (finishedWork.flags & passiveSubtreeMask) !== NoFlags;
-
+  // 如果还有任务要执行，就切换阶段到Passive 阶段处理effect
+  // 主要是useEffect相关的内容
   if (rootDidHavePassiveEffects) {
     pendingEffectsStatus = PENDING_PASSIVE_PHASE;
   } else {
+    // 标记没有任务执行了 清空工作节点
     pendingEffectsStatus = NO_PENDING_EFFECTS;
     pendingEffectsRoot = null as any; // Clear for GC purposes.
     pendingFinishedWork = null as any; // Clear for GC purposes.
     // There were no passive effects, so we can immediately release the cache
     // pool for this render.
+    // 检查是否需要缓存计数减少和清空缓存
     releaseRootPooledCache(root, root.pendingLanes);
     if (__DEV__) {
       nestedPassiveUpdateCount = 0;
@@ -4398,6 +4436,7 @@ function flushSpawnedWork(): void {
   }
 
   // Read this again, since an effect might have updated it
+  // 检查一下还有没有需要commit的任务
   let remainingLanes = root.pendingLanes;
 
   // Check if there's remaining work on this root
@@ -4410,6 +4449,7 @@ function flushSpawnedWork(): void {
   // any work remaining at all (which would also include stuff like Suspense
   // retries or transitions). It's been like this for a while, though, so fixing
   // it probably isn't that urgent.
+  // 如果没有任务了就清空错误集合
   if (remainingLanes === NoLanes) {
     // If there's no remaining work, we can clear the set of already failed
     // error boundaries.
@@ -4422,9 +4462,11 @@ function flushSpawnedWork(): void {
     }
   }
 
+  // 获取任务中最高优先级的任务
   const renderPriority = lanesToEventPriority(lanes);
+  // 函数钩子注入，服务于devtool
   onCommitRootDevTools(finishedWork.stateNode, renderPriority);
-
+  // 更新跟踪
   if (enableUpdaterTracking) {
     if (isDevToolsPresent) {
       root.memoizedUpdaters.clear();
@@ -4435,14 +4477,19 @@ function flushSpawnedWork(): void {
     onCommitRootTestSelector();
   }
 
+  // 检查已经恢复，但仍需要记录和通知开发者的错误 执行onRecoverableError函数钩子
   if (recoverableErrors !== null) {
+    // 暂存过渡相关信息
     const prevTransition = ReactSharedInternals.T;
     const previousUpdateLanePriority = getCurrentUpdatePriority();
+    // 设置为离散更新 清空过渡对象
     setCurrentUpdatePriority(DiscreteEventPriority);
     ReactSharedInternals.T = null;
     try {
       // There were errors during this render, but recovered from them without
       // needing to surface it to the UI. We log them here.
+      // 获取所有的回调函数
+      // 挨个执行回调函数
       const onRecoverableError = root.onRecoverableError;
       for (let i = 0; i < recoverableErrors.length; i++) {
         const recoverableError = recoverableErrors[i];
@@ -4459,17 +4506,21 @@ function flushSpawnedWork(): void {
         }
       }
     } finally {
+      // 恢复共享变量
       ReactSharedInternals.T = prevTransition;
       setCurrentUpdatePriority(previousUpdateLanePriority);
     }
   }
 
+  // 如果开启了视图过渡
   if (enableViewTransition) {
     // We should now be after the startViewTransition's .ready call which is late enough
     // to start animating any pseudo-elements. We do this before flushing any passive
     // effects or spawned sync work since this is still part of the previous commit.
     // Even though conceptually it's like its own task between layout effets and passive.
+    // 获取视图过渡的回调函数
     const pendingEvents = pendingViewTransitionEvents;
+    // 获取过渡的类型集合
     let pendingTypes = pendingTransitionTypes;
     pendingTransitionTypes = null;
     if (pendingEvents !== null) {
@@ -4478,11 +4529,15 @@ function flushSpawnedWork(): void {
         // Normalize the type. This is lazily created only for events.
         pendingTypes = [];
       }
+      // 如果有待提交的视图过渡对象
       if (committedViewTransition !== null) {
         for (let i = 0; i < pendingEvents.length; i++) {
+          // 获取单个回调函数
           const viewTransitionEvent = pendingEvents[i];
+          // 执行回调函数 获取清理函数
           const cleanup = viewTransitionEvent(pendingTypes);
           if (cleanup !== undefined) {
+            // 监听committedViewTransition执行结束后执行清理函数
             addViewTransitionFinishedListener(committedViewTransition, cleanup);
           }
         }
@@ -4498,18 +4553,22 @@ function flushSpawnedWork(): void {
   // TODO: We can optimize this by not scheduling the callback earlier. Since we
   // currently schedule the callback in multiple places, will wait until those
   // are consolidated.
+  // 如果有同步任务并且有非leagacy模式
   if (
     includesSyncLane(pendingEffectsLanes) &&
     (disableLegacyMode || root.tag !== LegacyRoot)
   ) {
+    // 再重新执行一遍父级函数，清空任务
     flushPendingEffects();
   }
 
   // Always call this before exiting `completeRoot`, to ensure that any
   // additional work on this root is scheduled.
+  // 检查是否有遗漏的更新
   ensureRootIsScheduled(root);
 
   // Read this again, since a passive effect might have updated it
+  // 保存剩余任务
   remainingLanes = root.pendingLanes;
 
   // Check if this render scheduled a cascading synchronous update. This is a
@@ -4518,49 +4577,62 @@ function flushSpawnedWork(): void {
   // hydration is conceptually not an update.
   if (
     // Was the finished render the result of an update (not hydration)?
+    // 是否有更新相关的任务并且有同步更新任务
     includesSomeLane(lanes, UpdateLanes) &&
     // Did it schedule a sync update?
     includesSomeLane(remainingLanes, SyncUpdateLanes)
   ) {
+    // 性能追踪
     if (enableProfilerTimer && enableProfilerNestedUpdatePhase) {
       markNestedUpdateScheduled();
     }
 
     // Count the number of times the root synchronously re-renders without
     // finishing. If there are too many, it indicates an infinite update loop.
+    // 用于判断是否存在死循环的变量
+    // 就是如果同一个节点不断重复渲染，在一个渲染过程中又触发移除该节点的渲染，那就会形成死循环
     if (root === rootWithNestedUpdates) {
       nestedUpdateCount++;
     } else {
+      // 清空计数和重置标记节点
       nestedUpdateCount = 0;
       rootWithNestedUpdates = root;
     }
+    // 标记本次渲染结束后有发生了同步更新任务
     nestedUpdateKind = NESTED_UPDATE_SYNC_LANE;
   } else if (
     // Check if there was a recursive update spawned by this render, in either
     // the render phase or the commit phase. We track these explicitly because
     // we can't infer from the remaining lanes alone.
+    // 检查是否发生了递归更新 异常渲染检查
     enableInfiniteRenderLoopDetection &&
     (didIncludeRenderPhaseUpdate || didIncludeCommitPhaseUpdate)
   ) {
+    // 性能追踪
     if (enableProfilerTimer && enableProfilerNestedUpdatePhase) {
       markNestedUpdateScheduled();
     }
 
     // Count the number of times the root synchronously re-renders without
     // finishing. If there are too many, it indicates an infinite update loop.
+    // 渲染计数加1
     if (root === rootWithNestedUpdates) {
       nestedUpdateCount++;
     } else {
+      // 重置错误标记
       nestedUpdateCount = 0;
       rootWithNestedUpdates = root;
     }
+    // 明确标记发生又一次渲染
     nestedUpdateKind = NESTED_UPDATE_PHASE_SPAWN;
   } else {
+    // 清空标记
     nestedUpdateCount = 0;
     rootWithNestedUpdates = null;
     nestedUpdateKind = NO_NESTED_UPDATE;
   }
 
+  // 性能追踪相关
   if (enableProfilerTimer && enableComponentPerformanceTrack) {
     if (!rootDidHavePassiveEffects) {
       finalizeRender(lanes, commitEndTime);
@@ -4570,17 +4642,21 @@ function flushSpawnedWork(): void {
   // Eagerly flush any event replaying that we unblocked within this commit.
   // This ensures that those are observed before we render any new changes.
   // $FlowFixMe[constant-condition]
+  // 当前渲染器是否支持复用服务端 DOM 的 Hydration。
   if (supportsHydration) {
+    // 事件重放 
     flushHydrationEvents();
   }
 
   // If layout work was scheduled, flush it now.
+  // 同步更新，清空所有任务
   flushSyncWorkOnAllRoots();
 
+  // 性能追踪
   if (enableSchedulingProfiler) {
     markCommitStopped();
   }
-
+  // 过渡追踪相关
   if (enableTransitionTracing) {
     // We process transitions during passive effects. However, passive effects can be
     // processed synchronously during the commit phase as well as asynchronously after
@@ -4844,14 +4920,18 @@ function makeErrorInfo(componentStack: ?string) {
   return errorInfo;
 }
 
+// 检查是否需要清空缓存
 function releaseRootPooledCache(root: FiberRoot, remainingLanes: Lanes) {
+  // 重置任务，清空不在remainingLanes里的任务
   const pooledCacheLanes = (root.pooledCacheLanes &= remainingLanes);
+  // 如果没有任务执行了，就清空缓存
   if (pooledCacheLanes === NoLanes) {
     // None of the remaining work relies on the cache pool. Clear it so
     // subsequent requests get a new cache
     const pooledCache = root.pooledCache;
     if (pooledCache != null) {
       root.pooledCache = null;
+      // 计数自减 为0则释放缓存
       releaseCache(pooledCache);
     }
   }
