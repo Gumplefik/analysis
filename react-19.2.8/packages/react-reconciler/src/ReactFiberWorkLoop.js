@@ -4947,7 +4947,36 @@ export function flushPendingEffectsDelayed(): boolean {
   return flushPendingEffects();
 }
 
-// 清空任务，执行所所有剩下的effect
+// 待提交的 View Transition
+// 取消尚未正式开始的动画
+// Gesture Mutation
+// 处理手势相关 DOM 修改
+// Gesture Animation
+// 启动手势动画、恢复临时样式
+// Mutation
+// 插入、更新、删除真实 DOM
+// Layout
+// 执行 useLayoutEffect、ref、生命周期
+// Spawned Work
+// 请求绘制、上报错误、通知 DevTools、
+// 处理 View Transition 回调、判断是否有 Passive Effect
+// Passive
+// 执行旧 useEffect 清理函数
+// 执行新的 useEffect 回调
+
+// PENDING_MUTATION_PHASE
+// PENDING_LAYOUT_PHASE
+// PENDING_AFTER_MUTATION_PHASE
+// PENDING_PASSIVE_PHASE
+// NO_PENDING_EFFECTS
+
+// 主要使用场景：
+// Scheduler 准备执行新任务
+// flushPendingEffects()
+// 先完成上一次遗留的 Effect
+// 重新计算新任务优先级
+
+// 按顺序完成遗留的 Commit 阶段工作，确保旧提交处理完毕后，React 才继续安排新的渲染任务。
 export function flushPendingEffects(): boolean {
   // Returns whether passive effects were flushed.
   // 关闭过渡
@@ -4985,7 +5014,7 @@ export function flushPendingEffects(): boolean {
   // 处理commit阶段产生的工作
   // Skip flushAfterMutation if we're forcing this early.
   flushSpawnedWork();
-  // 执行effect
+  // 执行 useEffect 清理函数和新回调
   return flushPassiveEffects();
 }
 
