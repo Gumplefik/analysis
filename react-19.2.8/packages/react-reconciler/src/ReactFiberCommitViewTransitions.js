@@ -236,13 +236,13 @@ function applyViewTransitionToHostInstancesRecursive(
       // id递增
       viewTransitionHostInstanceIdx++;
     } else if (
-      // 屏幕外的过渡不用渲染
+      // 已隐藏的 Offscreen 子树不参与本次 View Transition 处理。
       child.tag === OffscreenComponent &&
       child.memoizedState !== null
     ) {
       // Skip any hidden subtrees. They were or are effectively not there.
     } else if (
-      // 屏幕内的过渡 但是嵌套过渡不渲染的话
+      // 如果要求在嵌套 ViewTransition 处停止，就不再继续处理它的子树。
       child.tag === ViewTransitionComponent &&
       stopAtNestedViewTransitions
     ) {
@@ -314,7 +314,7 @@ function commitAppearingPairViewTransitions(placement: Fiber): void {
   }
   let child = placement.child;
   while (child !== null) {
-    // 视窗外不用管
+    // 已经隐藏的 Offscreen 子树不需要继续遍历。
     if (child.tag === OffscreenComponent && child.memoizedState !== null) {
       // This tree was already hidden so we skip it.
     } else {
