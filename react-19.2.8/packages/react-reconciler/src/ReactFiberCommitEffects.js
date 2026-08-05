@@ -321,6 +321,7 @@ export function commitHookEffectListUnmount(
   }
 }
 
+// 提交指定阶段的effect执行
 export function commitHookPassiveMountEffects(
   finishedWork: Fiber,
   hookFlags: HookFlags,
@@ -334,6 +335,8 @@ export function commitHookPassiveMountEffects(
   }
 }
 
+
+// 带有profile的执行指定循环相关的effect
 export function commitHookPassiveUnmountEffects(
   finishedWork: Fiber,
   nearestMountedAncestor: null | Fiber,

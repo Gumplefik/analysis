@@ -57,7 +57,7 @@ export function eventPriorityToLane(updatePriority: EventPriority): Lane {
   return updatePriority;
 }
 
-// 获取最高优先级的任务
+// 根据任务获取最高优先级
 export function lanesToEventPriority(lanes: Lanes): EventPriority {
   const lane = getHighestPriorityLane(lanes);
   if (!isHigherEventPriority(DiscreteEventPriority, lane)) {

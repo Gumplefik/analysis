@@ -4989,7 +4989,14 @@ export function flushPendingEffects(): boolean {
   return flushPassiveEffects();
 }
 
+
+// 清空本次 Passive 阶段的临时状态
+// 执行旧的 useEffect 清理函数
+// 执行新的 useEffect 回调
+// 处理 useEffect 中产生的新同步更新
+// 重新调度 Root 上剩余的任务
 function flushPassiveEffects(): boolean {
+  // 检查状态
   if (pendingEffectsStatus !== PENDING_PASSIVE_PHASE) {
     return false;
   }
@@ -4999,40 +5006,67 @@ function flushPassiveEffects(): boolean {
   // priority within React itself, so we can mutate the variable directly.
   // Cache the root since pendingEffectsRoot is cleared in
   // flushPassiveEffectsImpl
+  // 获取当前的工作节点
   const root = pendingEffectsRoot;
   // Cache and clear the remaining lanes flag; it must be reset since this
   // method can be called from various places, not always from completeRoot
   // where the remaining lanes are known
+  // 获取commit完成后剩余的任务
   const remainingLanes = pendingEffectsRemainingLanes;
+  // 重置为空
   pendingEffectsRemainingLanes = NoLanes;
 
+  // 根据任务获取当前的事件优先级
   const renderPriority = lanesToEventPriority(pendingEffectsLanes);
+  // 比较获取较高的优先级
   const priority = lowerEventPriority(DefaultEventPriority, renderPriority);
+  // 暂存过渡的变量便于恢复
   const prevTransition = ReactSharedInternals.T;
   const previousPriority = getCurrentUpdatePriority();
 
   try {
+    // 设置事件优先级
     setCurrentUpdatePriority(priority);
+    // 清空过渡对象
     ReactSharedInternals.T = null;
+    // 取出本次提交的信息，先执行旧 useEffect 的清理函数，再执行新的 useEffect 回调，最后处理 Effect 中产生的新更新。
     return flushPassiveEffectsImpl();
   } finally {
+    // 恢复共享变量
     setCurrentUpdatePriority(previousPriority);
     ReactSharedInternals.T = prevTransition;
 
     // Once passive effects have run for the tree - giving components a
     // chance to retain cache instances they use - release the pooled
     // cache at the root (if there is one)
+    // 检查是否要清空缓存
     releaseRootPooledCache(root, remainingLanes);
   }
 }
 
+
+// 取出本次提交的信息，
+// 先执行旧 useEffect 的清理函数，
+// 再执行新的 useEffect 回调，
+// 最后处理 Effect 中产生的新更新。
+
+// 读取并清空 Passive 临时状态
+// 进入 CommitContext
+// 执行旧 useEffect 清理函数
+// 执行新的 useEffect 回调
+// 恢复执行上下文
+// 处理 useEffect 中产生的同步更新
+// 重新调度剩余任务
 function flushPassiveEffectsImpl() {
   // Cache and clear the transitions flag
+  // 获取passive阶段的过渡对象
   const transitions = pendingPassiveTransitions;
   pendingPassiveTransitions = null;
 
+  // 获取effect执行的fiberroot和任务集合
   const root = pendingEffectsRoot;
   const lanes = pendingEffectsLanes;
+  // 清空共享变量 便于内存回收
   pendingEffectsStatus = NO_PENDING_EFFECTS;
   pendingEffectsRoot = null as any; // Clear for GC purposes.
   pendingFinishedWork = null as any; // Clear for GC purposes.
@@ -5041,28 +5075,35 @@ function flushPassiveEffectsImpl() {
   // because it's only used for profiling), but it's a refactor hazard.
   pendingEffectsLanes = NoLanes;
 
+  // 是否支持在passive前yield
   if (enableYieldingBeforePassive) {
     // We've finished our work for this render pass.
+     // 当前调度回调已经开始执行，不再属于 Root
     root.callbackNode = null;
     root.callbackPriority = NoLane;
   }
 
+  // 错误检查
   if ((executionContext & (RenderContext | CommitContext)) !== NoContext) {
+     // 不能在正在渲染或正在提交 DOM 时执行 Passive Effect
     throw new Error('Cannot flush passive effects while already rendering.');
   }
 
+  // 性能追踪
   if (enableProfilerTimer && enableComponentPerformanceTrack) {
     // We're about to log a lot of profiling for this commit.
     // We set this once so we don't have to recompute it for every log.
     setCurrentTrackFromLanes(lanes);
   }
 
+  // dev变量
   if (__DEV__) {
     isFlushingPassiveEffects = true;
     didScheduleUpdateDuringPassiveEffects = false;
   }
 
   let passiveEffectStartTime = 0;
+  // 性能追踪
   if (enableProfilerTimer && enableComponentPerformanceTrack) {
     resetCommitErrors();
     passiveEffectStartTime = now();
@@ -5078,15 +5119,19 @@ function flushPassiveEffectsImpl() {
       );
     }
   }
-
+  // 性能追踪
   if (enableSchedulingProfiler) {
     markPassiveEffectsStarted(lanes);
   }
 
   const prevExecutionContext = executionContext;
+  // 切换到commit阶段
   executionContext |= CommitContext;
 
+  // 执行effect清理工作 和 fiber节点的清理
   commitPassiveUnmountEffects(root.current);
+  // 遍历 Fiber 子树，并根据每个 Fiber 的类型，执行 useEffect、缓存、
+  // Offscreen 和 View Transition 等 Passive 阶段工作。
   commitPassiveMountEffects(
     root,
     root.current,
@@ -5095,16 +5140,20 @@ function flushPassiveEffectsImpl() {
     pendingEffectsRenderEndTime,
   );
 
+  // 性能追踪
   if (enableSchedulingProfiler) {
     markPassiveEffectsStopped();
   }
 
   if (__DEV__) {
+    // 用来检查 Effect 是否能够正确清理
     commitDoubleInvokeEffectsInDEV(root, true);
   }
 
+  // 恢复执行上下文
   executionContext = prevExecutionContext;
 
+  // 性能追踪
   if (enableProfilerTimer && enableComponentPerformanceTrack) {
     const passiveEffectsEndTime = now();
     logPassiveCommitPhase(
@@ -5115,9 +5164,11 @@ function flushPassiveEffectsImpl() {
     );
     finalizeRender(lanes, passiveEffectsEndTime);
   }
-
+  // useEffect 中可能调用了 setState
+  // 立即处理由此产生的同步更新
   flushSyncWorkOnAllRoots();
 
+  // 过渡追踪相关
   if (enableTransitionTracing) {
     const prevPendingTransitionCallbacks = currentPendingTransitionCallbacks;
     const prevRootTransitionCallbacks = root.transitionCallbacks;
@@ -5129,6 +5180,7 @@ function flushPassiveEffectsImpl() {
     ) {
       currentPendingTransitionCallbacks = null;
       currentEndTime = null;
+       // 将 Transition 完成等通知安排成低优先级任务
       scheduleCallback(IdleSchedulerPriority, () => {
         processTransitionCallbacks(
           prevPendingTransitionCallbacks,
@@ -5161,17 +5213,19 @@ function flushPassiveEffectsImpl() {
     // sequence of work. We wait until the end to do this in case the passive
     // effect schedules higher priority work than we had remaining. That way
     // we don't schedule an early callback that gets cancelled anyway.
+    // Effect 执行完后，检查 Root 是否还有任务
     ensureRootIsScheduled(root);
   }
 
   // TODO: Move to commitPassiveMountEffects
+  // 通知 DevTools 提交结束
   onPostCommitRootDevTools(root);
   if (enableProfilerTimer && enableProfilerCommitHooks) {
     const stateNode = root.current.stateNode;
     stateNode.effectDuration = 0;
     stateNode.passiveEffectDuration = 0;
   }
-
+  // 表示确实执行了 Passive Effect
   return true;
 }
 
