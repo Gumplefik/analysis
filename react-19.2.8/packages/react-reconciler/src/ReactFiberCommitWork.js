@@ -193,10 +193,13 @@ import {
   // 提交提升节点前重置本次提交使用的查找缓存。
   prepareToCommitHoistables,
   // 判断同步提交是否允许等待当前宿主节点的资源。
+  // 当前是同步更新时，是否也允许因为图片等资源没准备好而延迟 Commit。
   maySuspendCommitInSyncRender,
   // 将当前宿主节点依赖的加载任务加入提交暂停状态。
+  // Commit 前等待真实 DOM 节点依赖的资源准备好。当前 React DOM 主要用于等待图片解码。
   suspendInstance,
   // 将共享资源的加载任务加入提交暂停状态。
+  // Commit 前检查本次页面需要的 CSS 样式表是否已经准备好；没准备好就登记为阻塞资源，让 React 暂缓提交 DOM。
   suspendResource,
   // 使用最新的 defaultValue 等属性重置表单。
   resetFormInstance,
@@ -5244,13 +5247,16 @@ export function commitPassiveUnmountEffects(finishedWork: Fiber): void {
 // Note that MaySuspendCommit and ShouldSuspendCommit also includes named
 // ViewTransitions so that we know to also visit those to collect appearing
 // pairs.
+// 当前宿主资源尚未准备好，Commit 阶段可能需要暂停。
 let suspenseyCommitFlag: Flags = ShouldSuspendCommit;
 export function accumulateSuspenseyCommit(
   finishedWork: Fiber,
   committedLanes: Lanes,
   suspendedState: SuspendedState,
 ): void {
+  // 清空过渡map
   resetAppearingViewTransitions();
+  // 递归检查资源对象，标记是否需要等待
   accumulateSuspenseyCommitOnFiber(
     finishedWork,
     committedLanes,
@@ -5258,6 +5264,8 @@ export function accumulateSuspenseyCommit(
   );
 }
 
+// 递归遍历执行accumulateSuspenseyCommitOnFiber
+// 使用suspensy标记进行剪枝
 function recursivelyAccumulateSuspenseyCommit(
   parentFiber: Fiber,
   committedLanes: Lanes,
@@ -5272,20 +5280,31 @@ function recursivelyAccumulateSuspenseyCommit(
   }
 }
 
+
+// Commit 前检查一个 Fiber 节点，收集需要等待的 CSS、图片，以及需要配对的 ViewTransition。
+// 在正式修改 DOM 前，把新页面中未准备好的 CSS、图片和 ViewTransition 配对信息全部找出来，
+// 供 waitForCommitToBeReady 决定是否延迟 Commit。
+// 调用suspendResource、suspendInstance标记等待资源
 function accumulateSuspenseyCommitOnFiber(
   fiber: Fiber,
   committedLanes: Lanes,
   suspendedState: SuspendedState,
 ) {
+  // 查看节点类型
   switch (fiber.tag) {
+    // 可提升节点
     case HostHoistable: {
+      // 递归提交子节点
       recursivelyAccumulateSuspenseyCommit(
         fiber,
         committedLanes,
         suspendedState,
       );
+      // 如果本节点有suspense标记
       if (fiber.flags & suspenseyCommitFlag) {
+        // 如果已经有suspense对象了
         if (fiber.memoizedState !== null) {
+          // 检查样式资源是否就绪
           suspendResource(
             suspendedState,
             // This should always be set by visiting HostRoot first
@@ -5299,26 +5318,33 @@ function accumulateSuspenseyCommitOnFiber(
           const props = fiber.memoizedProps;
           // TODO: Allow sync lanes to suspend too with an opt-in.
           if (
+            // 只有一些低优先级的任务
             includesOnlySuspenseyCommitEligibleLanes(committedLanes) ||
+            // 当前是同步更新时，是否也允许因为图片等资源没准备好而延迟 Commit。
             maySuspendCommitInSyncRender(type, props)
           ) {
+            // Commit 前等待真实 DOM 节点依赖的资源准备好。当前 React DOM 主要用于等待图片解码。
             suspendInstance(suspendedState, instance, type, props);
           }
         }
       }
       break;
     }
+    // 根组件
     case HostComponent: {
+      // 递归遍历子节点
       recursivelyAccumulateSuspenseyCommit(
         fiber,
         committedLanes,
         suspendedState,
       );
+      // 剪枝判断
       if (fiber.flags & suspenseyCommitFlag) {
         const instance = fiber.stateNode;
         const type = fiber.type;
         const props = fiber.memoizedProps;
         // TODO: Allow sync lanes to suspend too with an opt-in.
+        // 同上
         if (
           includesOnlySuspenseyCommitEligibleLanes(committedLanes) ||
           maySuspendCommitInSyncRender(type, props)
@@ -5334,8 +5360,9 @@ function accumulateSuspenseyCommitOnFiber(
       if (supportsResources) {
         const previousHoistableRoot = currentHoistableRoot;
         const container: Container = fiber.stateNode.containerInfo;
+        // 获取实际的root节点
         currentHoistableRoot = getHoistableRoot(container);
-
+        // 递归遍历子节点
         recursivelyAccumulateSuspenseyCommit(
           fiber,
           committedLanes,
@@ -5343,6 +5370,7 @@ function accumulateSuspenseyCommitOnFiber(
         );
         currentHoistableRoot = previousHoistableRoot;
       } else {
+        // 递归遍历子节点
         recursivelyAccumulateSuspenseyCommit(
           fiber,
           committedLanes,
@@ -5351,27 +5379,38 @@ function accumulateSuspenseyCommitOnFiber(
       }
       break;
     }
+    // 显示影藏组件
     case OffscreenComponent: {
+      // 是否有hidden对象
       const isHidden = (fiber.memoizedState as OffscreenState | null) !== null;
       if (isHidden) {
+        // 隐藏对象不进行处理
         // Don't suspend in hidden trees
       } else {
+        // 获取双缓存节点、
         const current = fiber.alternate;
         const wasHidden =
+          // 对象节点非空，即初始化过的
           current !== null &&
+          // 双缓存节点上hidden对象非空
           (current.memoizedState as OffscreenState | null) !== null;
+        // 以前是隐藏的
         if (wasHidden) {
           // This tree is being revealed. Visit all newly visible suspensey
           // instances, even if they're in the current tree.
+          // 暂存suspensey变量
           const prevFlags = suspenseyCommitFlag;
           suspenseyCommitFlag = MaySuspendCommit;
+          // 递归子节点
           recursivelyAccumulateSuspenseyCommit(
             fiber,
             committedLanes,
             suspendedState,
           );
+          // 恢复变量
           suspenseyCommitFlag = prevFlags;
         } else {
+          // 递归子节点
           recursivelyAccumulateSuspenseyCommit(
             fiber,
             committedLanes,
@@ -5381,21 +5420,31 @@ function accumulateSuspenseyCommitOnFiber(
       }
       break;
     }
+    // 视图过渡组件
     case ViewTransitionComponent: {
+      // 如果开启了视图过渡
       if (enableViewTransition) {
+        // 如果节点有suspense标记
         if ((fiber.flags & suspenseyCommitFlag) !== NoFlags) {
+          // 获取参数
           const props: ViewTransitionProps = fiber.memoizedProps;
+          // 获取名称
           const name: ?string | 'auto' = props.name;
+          // 名称非默认
           if (name != null && name !== 'auto') {
             // This is a named ViewTransition being mounted or reappearing. Let's add it to
             // the map so we can match it with deletions later.
+            // 获取节点对象
             const state: ViewTransitionState = fiber.stateNode;
             // Reset the pair in case we didn't end up restoring the instance in previous commits.
             // This shouldn't really happen anymore but just in case. We could maybe add an invariant.
+            // 清空配对对象
             state.paired = null;
+            // 保存视图对象到appearingViewTransitions
             trackAppearingViewTransition(name, state);
           }
         }
+        // 递归遍历子节点
         recursivelyAccumulateSuspenseyCommit(
           fiber,
           committedLanes,
@@ -5406,6 +5455,7 @@ function accumulateSuspenseyCommitOnFiber(
       // Fallthrough
     }
     default: {
+      // 默认就是一递归遍历子节点
       recursivelyAccumulateSuspenseyCommit(
         fiber,
         committedLanes,

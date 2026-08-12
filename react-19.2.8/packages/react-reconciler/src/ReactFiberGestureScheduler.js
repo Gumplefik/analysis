@@ -27,19 +27,30 @@ import {
 import {getCurrentGestureOffset, stopViewTransition} from './ReactFiberConfig';
 import {pingGestureRoot, restartGestureRoot} from './ReactFiberWorkLoop';
 
-// This type keeps track of any scheduled or active gestures.
+// 保存一个已经安排或正在执行的手势过渡，以及它的执行、提交和队列状态。
 export type ScheduledGesture = {
+  // 提供手势当前进度的时间线，例如用户返回手势已经拖动到百分之多少。
   provider: GestureTimeline,
-  count: number, // The number of times this same provider has been started.
-  rangeStart: number, // The percentage along the timeline where the "current" state starts.
-  rangeEnd: number, // The percentage along the timeline where the "destination" state is reached.
-  types: null | TransitionTypes, // Any addTransitionType call made during startGestureTransition.
-  running: null | RunningViewTransition, // Used to cancel the running transition after we're done.
-  commit: null | (() => void), // Callback to run to commit if there's a pending commit.
-  committing: boolean, // If the gesture was released in a committed state and should actually commit.
-  revertLane: Lane, // The Lane that we'll use to schedule the revert.
-  prev: null | ScheduledGesture, // The previous scheduled gesture in the queue for this root.
-  next: null | ScheduledGesture, // The next scheduled gesture in the queue for this root.
+  // 同一个 provider 被启动但尚未结束的次数；归零时决定提交目标界面还是恢复原界面。
+  count: number,
+  // 手势开始时所在的进度百分比，代表“当前界面”对应的位置。
+  rangeStart: number,
+  // 手势完成目标界面时的进度百分比，方向相反时可以小于 rangeStart。
+  rangeEnd: number,
+  // startGestureTransition 期间通过 addTransitionType 添加的过渡类型。
+  types: null | TransitionTypes,
+  // 当前正在运行的 View Transition；手势结束或取消后用它停止动画。
+  running: null | RunningViewTransition,
+  // Fiber 树已经准备好、但仍等待手势决定时保存的提交回调。
+  commit: null | (() => void),
+  // 手势松开后是否决定进入目标界面；为 true 时需要真正提交手势渲染结果。
+  committing: boolean,
+  // 手势取消或完成后，用于安排恢复/后续 Transition 更新的 Lane。
+  revertLane: Lane,
+  // 当前 Root 手势队列中的前一个手势。
+  prev: null | ScheduledGesture,
+  // 当前 Root 手势队列中的后一个手势。
+  next: null | ScheduledGesture,
 };
 
 export function scheduleGesture(

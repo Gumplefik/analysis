@@ -6597,22 +6597,30 @@ export function suspendResource(
   }
 }
 
+// 执行过渡任务 在reconciler里面是同步代码执行的
+// 在过渡结束后执行样式的插入和回调的执行
 export function suspendOnActiveViewTransition(
   state: SuspendedState,
   rootContainer: Container,
 ): void {
+  // 获取document
   const ownerDocument =
     rootContainer.nodeType === DOCUMENT_NODE
       ? rootContainer
       : rootContainer.ownerDocument;
   // $FlowFixMe[prop-missing]
+  // 获取视图过渡对象
   const activeViewTransition = ownerDocument.__reactViewTransition;
   if (activeViewTransition == null) {
     return;
   }
+  // 引用对象计数加1
   state.count++;
+  // 标记在等待视图过渡
   state.waitingForViewTransition = true;
+  // 会调函数绑定上下文 执行样式的插入和回调函数的执行
   const ping = onUnsuspend.bind(state);
+  // 添加函数钩子，监听finish
   activeViewTransition.finished.then(ping, ping);
 }
 
@@ -6717,15 +6725,20 @@ export function getSuspendedCommitReason(
   return null;
 }
 
+// 按顺序插入所有的样式 或者执行unsuspend回调函数
 function checkIfFullyUnsuspended(state: SuspendedState) {
+  // 如果计数为0 或者 （等待加载图片数量为0 或者 没有在等待加载图片）
   if (state.count === 0 && (state.imgCount === 0 || !state.waitingForImages)) {
+    // 如果有样式
     if (state.stylesheets) {
       // If we haven't actually inserted the stylesheets yet we need to do so now before starting the commit.
       // The reason we do this after everything else has finished is because we want to have all the stylesheets
       // load synchronously right before mutating. Ideally the new styles will cause a single recalc only on the
       // new tree. When we filled up stylesheets we only inlcuded stylesheets with matching media attributes so we
       // wait for them to load before actually continuing. We expect this to increase the count above zero
+      // 按顺序插入所有的样式
       insertSuspendedStylesheets(state, state.stylesheets);
+    // 如果已经取消了就执行回调函数
     } else if (state.unsuspend) {
       const unsuspend = state.unsuspend;
       state.unsuspend = null;
@@ -6734,8 +6747,11 @@ function checkIfFullyUnsuspended(state: SuspendedState) {
   }
 }
 
+// 取消挂载等待
 function onUnsuspend(this: SuspendedState) {
+  // 计数减1
   this.count--;
+  // 插入每个样式或者执行回调函数
   checkIfFullyUnsuspended(this);
 }
 
@@ -6759,13 +6775,15 @@ let precedencesByRoot: Map<
   Map<string | typeof LAST_PRECEDENCE, Instance>,
 > = null as any;
 
+// 插入resources对象
 function insertSuspendedStylesheets(
   state: SuspendedState,
   resources: Map<StylesheetResource, HoistableRoot>,
 ): void {
   // We need to clear this out so we don't try to reinsert after the stylesheets have loaded
+  // 清空样式
   state.stylesheets = null;
-
+  // 如果suspense取消不需要继续执行
   if (state.unsuspend === null) {
     // The suspended commit was cancelled. We don't need to insert any stylesheets.
     return;
@@ -6773,85 +6791,111 @@ function insertSuspendedStylesheets(
 
   // Temporarily increment count. we don't want any synchronously loaded stylesheets to try to unsuspend
   // before we finish inserting all stylesheets.
+  // 计数加1
   state.count++;
-
+  // 暂存对象
   precedencesByRoot = new Map();
+  // 按优先级插入样式 
   resources.forEach(insertStylesheetIntoRoot, state);
+  // 清空缓存
   precedencesByRoot = null as any;
 
   // We can remove our temporary count and if we're still at zero we can unsuspend.
   // If we are in the synchronous phase before deciding if the commit should suspend and this
   // ends up hitting the unsuspend path it will just invoke the noop unsuspend.
+  // 绑定上下文 再执行一次
   onUnsuspend.call(state);
 }
 
+
+// 按优先级插入样式，并将样式加载加入 Commit 等待任务。
 function insertStylesheetIntoRoot(
   this: SuspendedState,
   root: HoistableRoot,
   resource: StylesheetResource,
   map: Map<StylesheetResource, HoistableRoot>,
 ) {
+  // 如果loading状态是已插入就退出
   if (resource.state.loading & Inserted) {
     // This resource was inserted by another root committing. we don't need to insert it again
     return;
   }
 
   let last;
+  // 获取缓存对象
   let precedences = precedencesByRoot.get(root);
   if (!precedences) {
+    // 如果空的话 先建立初始化map
     precedences = new Map();
     precedencesByRoot.set(root, precedences);
+    // 查找对应的dom节点
     const nodes = root.querySelectorAll(
       'link[data-precedence],style[data-precedence]',
     );
+    // 执行循环
     for (let i = 0; i < nodes.length; i++) {
       const node = nodes[i];
+      // 获取link类型的节点
       if (
         node.nodeName === 'LINK' ||
         // We omit style tags with media="not all" because they are not in the right position
         // and will be hoisted by the Fizz runtime imminently.
         node.getAttribute('media') !== 'not all'
       ) {
+        // 建立优先级和节点的map映射关系 实际上只会保存每个优先级的最后一个节点
         precedences.set(
           // $FlowFixMe[prop-missing]
           node.dataset.precedence,
           node,
         );
+        // 保存最后一个节点
         last = node;
       }
     }
     if (last) {
+      // 保存最后一个节点的索引
       precedences.set(LAST_PRECEDENCE, last);
     }
   } else {
+    // 获取最后一个节点
     last = precedences.get(LAST_PRECEDENCE);
   }
 
   // We only call this after we have constructed an instance so we assume it here
+  // 要插入的节点
   const instance: HTMLLinkElement = resource.instance as any;
   // We will always have a precedence for stylesheet instances
+  // 获取优先级
   const precedence: string = instance.getAttribute('data-precedence') as any;
-
+  // 查询缓存的节点
   const prior = precedences.get(precedence) || last;
+  // 更新last节点 因为instance会插入到最后面，成为last节点
   if (prior === last) {
     precedences.set(LAST_PRECEDENCE, instance);
   }
+  // 更新优先级对应的节点
   precedences.set(precedence, instance);
-
+  // 计数自增
   this.count++;
+  // 新建回调函数
   const onComplete = onUnsuspend.bind(this);
+  // 监听加载事件
   instance.addEventListener('load', onComplete);
   instance.addEventListener('error', onComplete);
-
+  // 如果有缓存节点，插入到prior的父级节点 在prior的下一个兄弟节点之前
   if (prior) {
+    // 插入到分组的最后一个
     (prior.parentNode as any).insertBefore(instance, prior.nextSibling);
   } else {
+    // 获取head节点或者shadownroot节点
     const parent =
       root.nodeType === DOCUMENT_NODE
         ? ((root as any as Document).head as any as Element)
         : (root as any as ShadowRoot);
+    // 插入到第一个节点上
     parent.insertBefore(instance, parent.firstChild);
   }
+  // 切换状态到loading
   resource.state.loading |= Inserted;
 }
 

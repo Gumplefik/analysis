@@ -60,9 +60,11 @@ export function resetShouldStartViewTransition(): void {
 
 // This tracks named ViewTransition components found in the accumulateSuspenseyCommit
 // phase that might need to find deleted pairs in the beforeMutation phase.
+// 本次更新中新出现的、带有明确 name 的 ViewTransition 节点。
 export let appearingViewTransitions: Map<string, ViewTransitionState> | null =
   null;
 
+// 清空过渡map
 export function resetAppearingViewTransitions(): void {
   appearingViewTransitions = null;
 }

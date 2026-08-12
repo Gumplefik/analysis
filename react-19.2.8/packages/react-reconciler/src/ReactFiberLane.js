@@ -463,6 +463,8 @@ export function getNextLanesToFlushSync(
   return NoLanes;
 }
 
+// 检查当前挂起的任务是否都完成不了，要等待一些额外资源信息
+// 就是意思现在的任务还没有ready
 export function checkIfRootIsPrerendering(
   root: FiberRoot,
   renderLanes: Lanes,
@@ -674,19 +676,22 @@ export function getHighestPriorityPendingLanes(root: FiberRoot): Lanes {
   return getHighestPriorityLanes(root.pendingLanes);
 }
 
+// 检查pending的任务剔除掉屏幕外的还有没有了
 export function getLanesToRetrySynchronouslyOnError(
   root: FiberRoot,
   originallyAttemptedLanes: Lanes,
 ): Lanes {
+  // 禁止再次尝试并发错误恢复的 Lane 和 传进来要恢复执行的任务没有重叠的话就退出
   if (root.errorRecoveryDisabledLanes & originallyAttemptedLanes) {
     // The error recovery mechanism is disabled until these lanes are cleared.
     return NoLanes;
   }
-
+  // 剔除屏幕外节点的任务
   const everythingButOffscreen = root.pendingLanes & ~OffscreenLane;
   if (everythingButOffscreen !== NoLanes) {
     return everythingButOffscreen;
   }
+  // 这个if看起来是进不来的，因为前面刚剔除掉
   if (everythingButOffscreen & OffscreenLane) {
     return OffscreenLane;
   }
@@ -700,6 +705,7 @@ export function includesSyncLane(lanes: Lanes): boolean {
 export function includesNonIdleWork(lanes: Lanes): boolean {
   return (lanes & NonIdleLanes) !== NoLanes;
 }
+// 是否都是suspense任务
 export function includesOnlyRetries(lanes: Lanes): boolean {
   return (lanes & RetryLanes) === lanes;
 }
@@ -710,6 +716,7 @@ export function includesOnlyNonUrgentLanes(lanes: Lanes): boolean {
     SyncLane | InputContinuousLane | DefaultLane | GestureLane;
   return (lanes & UrgentLanes) === NoLanes;
 }
+
 export function includesOnlyTransitions(lanes: Lanes): boolean {
   return (lanes & TransitionLanes) === lanes;
 }
@@ -941,6 +948,7 @@ export function markRootUpdated(root: FiberRoot, updateLane: Lane) {
   }
 }
 
+// 标记节点任务为挂起状态 因为数据还没有ready
 export function markRootSuspended(
   root: FiberRoot,
   suspendedLanes: Lanes,

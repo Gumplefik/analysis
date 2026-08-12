@@ -149,9 +149,17 @@ export type Fiber = {
   // 2. firstBaseUpdate lastBaseUpdate 暂时没有被处理的更新链表
   // 3. shared 新加入的setState更新 更新所属的Lane Offscreen隐藏期间延迟执行的回调
   // 4. callbacks 本次提交后需要执行的setState回调
+  // 5. stores 保存读取的外部的store数据
   updateQueue: mixed,
 
   // The state used to create the output
+  // memoizedState 在不同 Fiber 类型上保存的内容不同：
+  // HostHoistable  → Resource 对象
+  // HostRoot       → RootState
+  // Suspense       → SuspenseState
+  // Offscreen      → OffscreenState
+  // 函数组件       → Hooks 链表
+  // 类组件         → 组件 state
   memoizedState: any,
 
   // Dependencies (contexts, events) for this fiber, if it has any

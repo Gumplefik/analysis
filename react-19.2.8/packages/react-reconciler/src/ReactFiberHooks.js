@@ -237,7 +237,9 @@ type StoreInstance<T> = {
 };
 
 type StoreConsistencyCheck<T> = {
+  // 本次渲染组件时，从外部 Store 读取到的数据
   value: T,
+  // 再次读取外部 Store 最新数据的函数
   getSnapshot: () => T,
 };
 
