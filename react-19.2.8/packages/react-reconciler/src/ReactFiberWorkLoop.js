@@ -1844,7 +1844,7 @@ function completeRootWhenReady(
       BothVisibilityAndMaySuspendCommit;
   // 等待加载的资源
   let suspendedState: null | SuspendedState = null;
-  // 如果是过渡、有suspense、手势过渡
+  // 如果是过渡、有suspense、手势过渡 流程一，有资源需要等待
   if (isViewTransitionEligible || maySuspendCommit || isGestureTransition) {
     // Before committing, ask the renderer whether the host tree is ready.
     // If it's not, we'll wait until it notifies us.
@@ -3808,26 +3808,58 @@ function unwindUnitOfWork(unitOfWork: Fiber, skipSiblings: boolean): void {
   workInProgress = null;
 }
 
-// TODO 待注解
+// 清理上一次遗留的 Effect
+// 检查新 Fiber 树是否有效
+// 保存本次提交需要的数据
+// 判断是否还要等待手势结束
+// commitRoot 开始正式提交
+// 主要整理数据，处理手势等待，最后调用commitRoot进行dom的变更提交
 function completeRoot(
   root: FiberRoot,
+  // Render 阶段生成的新 Fiber 树。
+  // 为 null 表示没有可提交的 Fiber 树。
   finishedWork: null | Fiber,
+  // 本次渲染并准备提交的任务集合。
   lanes: Lanes,
+  // 渲染过程中发生过，但 React 已经恢复的错误。
+  // 提交后会传给 root.onRecoverableError。
   recoverableErrors: null | Array<CapturedValue<mixed>>,
+  // 本次渲染关联的 Transition 信息。
+  // 后续用于 Transition 追踪和回调。
   transitions: Array<Transition> | null,
+  // 本次 Render 阶段中是否又产生了新的更新。
+  // 用于检测组件渲染时反复触发更新的问题。
   didIncludeRenderPhaseUpdate: boolean,
+  // 本次渲染过程中产生的新延迟 Lane。
+  // 主要用于 useDeferredValue 等延迟更新。
   spawnedLane: Lane,
+  // 本次渲染进行期间，Root 又收到的更新 Lane。
+  // 这些任务不能被误认为已经完成。
   updatedLanes: Lanes,
+  // 本次渲染尝试过但仍然挂起的 Retry Lane。
+  // 通常表示 Suspense 重试后资源依然没有准备好。
   suspendedRetryLanes: Lanes,
+  // 遇到 Suspense 后，是否跳过了还没检查的兄弟节点。
+  // 用于判断本次是否尝试过整棵相关 Fiber 树。
   didSkipSuspendedSiblings: boolean,
+  // Render 阶段的结束状态。
+  // 例如完成、挂起、可恢复错误或严重错误。
   exitStatus: RootExitStatus,
+  // Commit 等待资源时收集的状态。
+  // 包含待加载的 CSS、待解码图片、View Transition 等信息。
   suspendedState: null | SuspendedState,
+  // 本次 Commit 被延迟的原因。
+  // 例如等待手势、资源或动画；主要用于性能记录。
   suspendedCommitReason: SuspendedCommitReason, // Profiling-only
+  // 本次 Render 开始的时间；只用于性能统计。
   completedRenderStartTime: number, // Profiling-only
+  // 本次 Render 完成的时间；只用于性能统计。
   completedRenderEndTime: number, // Profiling-only
 ): void {
+  // 清空取消函数钩子 开始执行
   root.cancelPendingCommit = null;
 
+  // 清空上一次提交遗留的effect
   do {
     // `flushPassiveEffects` will call `flushSyncUpdateQueue` at the end, which
     // means `flushPassiveEffects` will sometimes result in additional
@@ -3839,10 +3871,11 @@ function completeRoot(
   } while (pendingEffectsStatus !== NO_PENDING_EFFECTS);
   flushRenderPhaseStrictModeWarningsInDEV();
 
+  // 检查状态是否到render、commit阶段
   if ((executionContext & (RenderContext | CommitContext)) !== NoContext) {
     throw new Error('Should not already be working.');
   }
-
+  // 性能追踪
   if (enableProfilerTimer && enableComponentPerformanceTrack) {
     // Log the previous render phase once we commit. I.e. we weren't interrupted.
     setCurrentTrackFromLanes(lanes);
@@ -3886,18 +3919,22 @@ function completeRoot(
       );
     }
   }
-
+  // 性能追踪
   if (enableSchedulingProfiler) {
     markCommitStarted(lanes);
   }
 
   if (finishedWork === null) {
+    // 性能追踪
     if (enableSchedulingProfiler) {
       markCommitStopped();
     }
+    // 如果开启了手势过渡
     if (enableGestureTransition) {
       // Stop any gestures that were committed.
+      // 如果当前是手势任务就停止提交
       if (isGestureRender(lanes)) {
+        // 停止提交当前的手势任务并且停止正在运行的视图过渡
         stopCommittedGesture(root);
       }
     }
@@ -3912,14 +3949,14 @@ function completeRoot(
       }
     }
   }
-
+  // 错误检查
   if (finishedWork === root.current) {
     throw new Error(
       'Cannot commit the same tree as before. This error is likely caused by ' +
         'a bug in React. Please file an issue.',
     );
   }
-
+  // 重置工作变量，标记已经完成运行
   if (root === workInProgressRoot) {
     // We can reset these now that they are finished.
     workInProgressRoot = null;
@@ -3937,28 +3974,34 @@ function completeRoot(
   // because workInProgressX might have changed between
   // the previous render and commit if we throttle the commit
   // with setTimeout
+  // 切换上下文
   pendingFinishedWork = finishedWork;
   pendingEffectsRoot = root;
   pendingEffectsLanes = lanes;
   pendingPassiveTransitions = transitions;
   pendingRecoverableErrors = recoverableErrors;
   pendingDidIncludeRenderPhaseUpdate = didIncludeRenderPhaseUpdate;
+  // 性能追踪
   if (enableProfilerTimer) {
     pendingEffectsRenderEndTime = completedRenderEndTime;
     pendingSuspendedCommitReason = suspendedCommitReason;
     pendingDelayedCommitReason = IMMEDIATE_COMMIT;
     pendingSuspendedViewTransitionReason = null;
   }
-
+  // 如果是手势任务
   if (enableGestureTransition && isGestureRender(lanes)) {
     const committingGesture = root.pendingGestures;
+    // 有待安排的手势任务，还没有决定进入目标界面
     if (committingGesture !== null && !committingGesture.committing) {
       // This gesture is not ready to commit yet. We'll mark it as suspended and
       // start a gesture transition which isn't really a side-effect. Then later
       // we might come back around to actually committing the root.
       const didAttemptEntireTree = !didSkipSuspendedSiblings;
+      // 标记节点任务为挂起状态 因为数据还没有ready
       markRootSuspended(root, lanes, spawnedLane, didAttemptEntireTree);
+      // 如果没有正在运行的视图过渡
       if (committingGesture.running === null) {
+        // 创建一个过渡，在过渡中应用dom修改
         applyGestureOnRoot(
           root,
           finishedWork,
@@ -3979,11 +4022,14 @@ function completeRoot(
           finalizeRender(lanes, completedRenderEndTime);
         }
         // We are no longer committing.
+        // 清空执行对象
         pendingEffectsRoot = null as any; // Clear for GC purposes.
         pendingFinishedWork = null as any; // Clear for GC purposes.
         pendingEffectsLanes = NoLanes;
       }
       // Schedule the root to be committed when the gesture completes.
+      // 保存新completeRootd到committingGesture的commit上
+      // 保存清理函数
       root.cancelPendingCommit = scheduleGestureCommit(
         committingGesture,
         completeRoot.bind(
@@ -4010,6 +4056,7 @@ function completeRoot(
   }
 
   // If we're not starting a gesture we now actually commit the root.
+  // 常规的提交修改dom
   commitRoot(
     root,
     finishedWork,
@@ -4023,6 +4070,7 @@ function completeRoot(
   );
 }
 
+// TODO
 function commitRoot(
   root: FiberRoot,
   finishedWork: Fiber,
@@ -4854,6 +4902,8 @@ function flushSpawnedWork(): void {
   }
 }
 
+
+// 动 View Transition；随后浏览器在快照阶段调用 flushGestureMutations，完成真正的 DOM 提交。
 function applyGestureOnRoot(
   root: FiberRoot,
   finishedWork: Fiber,
@@ -4862,8 +4912,10 @@ function applyGestureOnRoot(
   renderEndTime: number, // Profiling-only
 ): void {
   // We assume that the gesture we just rendered was the first one in the queue.
+  // 获取等待执行的手势过渡
   const finishedGesture = root.pendingGestures;
   if (finishedGesture === null) {
+    // 为空的话可能取消了这个手势，开启下一个微任务调度
     // We must have already cancelled this gesture before we had a chance to
     // render it. Let's schedule work on the next set of lanes.
     ensureRootIsScheduled(root);
@@ -4875,24 +4927,29 @@ function applyGestureOnRoot(
   }
 
   pendingViewTransitionEvents = null;
-
+  // 暂存过渡对象
   const prevTransition = ReactSharedInternals.T;
   ReactSharedInternals.T = null;
   const previousPriority = getCurrentUpdatePriority();
+  // 设置为离散事件优先级
   setCurrentUpdatePriority(DiscreteEventPriority);
+  // 切换到commit阶段
   const prevExecutionContext = executionContext;
   executionContext |= CommitContext;
   try {
+    // 对应场景：用户正在滑动返回时，当前页面还不能马上被替换。React 先在临时容器里构造“返回完成后页面”的 DOM，用它生成过渡动画。
+    // 为手势过渡创建一份“更新后的目标页面 DOM 副本”。
     insertDestinationClones(root, finishedWork);
   } finally {
     // Reset the priority to the previous non-sync value.
+    // 恢复上下文
     executionContext = prevExecutionContext;
     setCurrentUpdatePriority(previousPriority);
     ReactSharedInternals.T = prevTransition;
   }
   pendingTransitionTypes = finishedGesture.types;
   pendingEffectsStatus = PENDING_GESTURE_MUTATION_PHASE;
-
+  // 开启手势过渡 返回的是一个RunningViewTransition|null
   pendingViewTransition = finishedGesture.running = startGestureTransition(
     suspendedState,
     root.containerInfo,

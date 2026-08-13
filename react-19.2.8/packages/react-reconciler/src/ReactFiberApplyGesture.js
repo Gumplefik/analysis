@@ -300,6 +300,7 @@ function applyAppearingPairViewTransition(child: Fiber): void {
   }
 }
 
+// TODO
 function applyExitViewTransition(placement: Fiber): void {
   // Normally these helpers do recursive calls but since insertion/offscreen is forked
   // we call this helper from those loops instead. This must be called only on
@@ -385,6 +386,8 @@ function applyUpdateViewTransition(current: Fiber, finishedWork: Fiber): void {
   }
 }
 
+
+// 递归插入新的fiber节点
 function recursivelyInsertNew(
   parentFiber: Fiber,
   hostParentClone: Instance,
@@ -401,6 +404,7 @@ function recursivelyInsertNew(
     return;
   }
   let child = parentFiber.child;
+  // 递归子一层的所有节点
   while (child !== null) {
     recursivelyInsertNewFiber(
       child,
@@ -412,6 +416,9 @@ function recursivelyInsertNew(
   }
 }
 
+// 递归插入新的fiber节点
+// 遍历一棵本次新挂载的 Fiber 子树，把其中新创建的真实 DOM 插入手势过渡的目标容器。
+// 把新挂载 Fiber 中的 DOM 组装进手势目标页面，并同时收集和设置 ViewTransition 动画信息。
 function recursivelyInsertNewFiber(
   finishedWork: Fiber,
   hostParentClone: Instance,
@@ -423,12 +430,14 @@ function recursivelyInsertNewFiber(
     case ForwardRef:
     case MemoComponent:
     case SimpleMemoComponent: {
+      // 递归子一层的节点
       recursivelyInsertNew(
         finishedWork,
         hostParentClone,
         parentViewTransition,
         visitPhase,
       );
+      // 如果有更新
       if (finishedWork.flags & Update) {
         // Insertion Effects are mounted temporarily during the rendering of the snapshot.
         // This does not affect cloned Offscreen content since those would've been mounted
@@ -437,6 +446,7 @@ function recursivelyInsertNewFiber(
         // tree remains mounted during the snapshot, we can't unmount any previous insertion
         // effects. This can lead to conflicts but that is similar to what can happen with
         // conflicts for two mounted Activity boundaries.
+        // 样式注入相关 按顺序执行effect的初始化以及保存清理回调函数
         commitHookEffectListMount(HookInsertion | HookHasEffect, finishedWork);
       }
       break;
@@ -445,6 +455,7 @@ function recursivelyInsertNewFiber(
       // $FlowFixMe[constant-condition]
       if (supportsResources) {
         // TODO: Hoistables should get optimistically inserted and then removed.
+        // 递归子一层的节点
         recursivelyInsertNew(
           finishedWork,
           hostParentClone,
@@ -458,6 +469,7 @@ function recursivelyInsertNewFiber(
     case HostSingleton: {
       // $FlowFixMe[constant-condition]
       if (supportsSingletons) {
+      // 递归子一层的节点
         recursivelyInsertNew(
           finishedWork,
           hostParentClone,
@@ -484,11 +496,15 @@ function recursivelyInsertNewFiber(
       // Fall through
     }
     case HostComponent: {
+      // 获取节点
       const instance: Instance = finishedWork.stateNode;
       // For insertions we don't need to clone. It's already new state node.
       if (visitPhase !== INSERT_APPEARING_PAIR) {
+        // 插入节点到新容器里
         appendChild(hostParentClone, instance);
+        // 标记dom变更
         trackHostMutation();
+      // 递归子一层的节点
         recursivelyInsertNew(
           finishedWork,
           instance,
@@ -496,8 +512,10 @@ function recursivelyInsertNewFiber(
           INSERT_APPEARING_PAIR,
         );
       } else {
+        // 递归子一层的节点
         recursivelyInsertNew(finishedWork, instance, null, visitPhase);
       }
+      // 保存容器节点
       if (parentViewTransition !== null) {
         if (parentViewTransition.clones === null) {
           parentViewTransition.clones = [instance];
@@ -518,6 +536,7 @@ function recursivelyInsertNewFiber(
       }
       // For insertions we don't need to clone. It's already new state node.
       if (visitPhase !== INSERT_APPEARING_PAIR) {
+        // 插入文本节点 标记dom变更
         appendChild(hostParentClone, textInstance);
         trackHostMutation();
       }
@@ -530,11 +549,13 @@ function recursivelyInsertNewFiber(
     case OffscreenComponent: {
       const newState: OffscreenState | null = finishedWork.memoizedState;
       const isHidden = newState !== null;
+      // 可见部分才需要递归
       if (!isHidden) {
         // Only insert nodes if this tree is going to be visible. No need to
         // insert invisible content.
         // Since there was no mutation to this node, it couldn't have changed
         // visibility so we don't need to update visitPhase here.
+        // 递归遍历子节点
         recursivelyInsertNew(
           finishedWork,
           hostParentClone,
@@ -545,11 +566,23 @@ function recursivelyInsertNewFiber(
       break;
     }
     case ViewTransitionComponent:
+      // 暂存上下文
       const prevMutationContext = pushMutationContext();
+      // 获取过渡实例
       const viewTransitionState: ViewTransitionState = finishedWork.stateNode;
       // TODO: If this was already cloned by a previous pass we can reuse those clones.
+      // 清空上一次保存的克隆节点
       viewTransitionState.clones = null;
       let nextPhase: VisitPhase;
+      // 检查当前是否正在处理一个“退出节点”。
+      // 在手势过渡的反向构建过程中，这个旧树中的退出节点，会作为目标克隆树中的进入节点来处理。
+      // 当前 ViewTransition 边界已经处理完成。
+      // 进入它的内部子树后，需要：
+      // 把内部真实 DOM 克隆到目标容器。
+      // 继续寻找内部可配对的 ViewTransition。
+      // 不再把所有内部节点继续当成顶层退出节点。
+      // 因此切换到普通追加阶段 INSERT_APPEND。
+      // INSERT_EXIT 只作用于当前 ViewTransition 边界；进入边界内部后，恢复成正常插入克隆节点的流程。
       if (visitPhase === INSERT_EXIT) {
         // This was an Enter of a ViewTransition. We now move onto inserting the inner
         // HostComponents and finding inner pairs.
@@ -557,6 +590,7 @@ function recursivelyInsertNewFiber(
       } else {
         nextPhase = visitPhase;
       }
+      // 递归子一层的节点
       recursivelyInsertNew(
         finishedWork,
         hostParentClone,
@@ -566,16 +600,20 @@ function recursivelyInsertNewFiber(
       // After we've inserted the new nodes into the "clones" set we can apply share
       // or exit transitions to them.
       if (visitPhase === INSERT_EXIT) {
+        // 给即将退出界面的克隆 DOM 设置 View Transition 名称和样式，并安排对应的手势回调。
         applyExitViewTransition(finishedWork);
       } else if (
         visitPhase === INSERT_APPEARING_PAIR ||
         visitPhase === INSERT_APPEND
       ) {
+        // 给新出现并且已经找到同名旧节点的 ViewTransition 克隆 DOM，设置共享元素动画。
         applyAppearingPairViewTransition(finishedWork);
       }
+      // 恢复上下文
       popMutationContext(prevMutationContext);
       break;
     default: {
+      // 递归子一层的节点
       recursivelyInsertNew(
         finishedWork,
         hostParentClone,
@@ -587,6 +625,22 @@ function recursivelyInsertNewFiber(
   }
 }
 
+// TODO
+// HostComponent
+// 复制真实 DOM 元素。
+// 如果还要查找内部 ViewTransition，浅复制并继续递归；
+// 否则直接深复制整棵 DOM 子树，提高性能。
+// HostText
+// 复制文本节点。
+// HostPortal
+// 暂时忽略 Portal，不复制。
+// OffscreenComponent
+// 只复制当前可见的内容，隐藏内容不复制。
+// ViewTransitionComponent
+// 收集它对应的克隆 DOM，
+// 然后根据阶段应用退出动画、共享元素动画或布局动画。
+// 其他 Fiber
+// 自身没有真实 DOM，继续向下查找。
 function recursivelyInsertClonesFromExistingTree(
   parentFiber: Fiber,
   hostParentClone: Instance,
@@ -747,12 +801,15 @@ function recursivelyInsertClonesFromExistingTree(
   }
 }
 
+// 在容器中根据fiber树递归插入dom节点
 function recursivelyInsertClones(
   parentFiber: Fiber,
+  // 新的克隆容器
   hostParentClone: Instance,
   parentViewTransition: null | ViewTransitionState,
   visitPhase: VisitPhase,
 ) {
+  // 获取被删除的节点
   const deletions = parentFiber.deletions;
   if (deletions !== null) {
     for (let i = 0; i < deletions.length; i++) {
@@ -764,7 +821,7 @@ function recursivelyInsertClones(
       trackHostMutation();
     }
   }
-
+  // 还没初始化或者子元素会修改dom 有突变
   if (
     parentFiber.alternate === null ||
     (parentFiber.subtreeFlags & MutationMask) !== NoFlags
@@ -772,17 +829,21 @@ function recursivelyInsertClones(
     // If we have mutations or if this is a newly inserted tree, clone as we go.
     let child = parentFiber.child;
     while (child !== null) {
+      // 递归插入节点到新容器里
+      // 根据更新完成的 Fiber，为手势过渡构造一个“更新后的目标页面”DOM。
       insertDestinationClonesOfFiber(
         child,
         hostParentClone,
         parentViewTransition,
         visitPhase,
       );
+      // 切换到兄弟节点
       child = child.sibling;
     }
   } else {
     // Once we reach a subtree with no more mutations we can bail out.
     // However, we must still insert deep clones of the HostComponents.
+    // 把没有发生更新的旧 DOM 子树复制到手势过渡的临时容器中。
     recursivelyInsertClonesFromExistingTree(
       parentFiber,
       hostParentClone,
@@ -798,6 +859,7 @@ function insertDestinationClonesOfFiber(
   parentViewTransition: null | ViewTransitionState,
   visitPhase: VisitPhase,
 ) {
+  // 初始化双缓存节点
   const current = finishedWork.alternate;
   if (current === null) {
     // This is a newly mounted subtree. Insert any HostComponents and trigger
@@ -1036,20 +1098,25 @@ function insertDestinationClonesOfFiber(
 
 // Clone View Transition boundaries that have any mutations or might have had their
 // layout affected by child insertions.
+// 为手势过渡创建一份“更新后的目标页面 DOM 副本”。
 export function insertDestinationClones(
   root: FiberRoot,
   finishedWork: Fiber,
 ): void {
   // We'll either not transition the root, or we'll transition the clone. Regardless
   // we cancel the root view transition name.
+  // 默认为true 
   const needsClone = detectMutationOrInsertClones(finishedWork);
   if (needsClone) {
     // Clone the whole root
+    // 为手势过渡创建一个临时的 Root 容器，用来在不修改当前页面的情况下组装“目标页面”。
     const rootClone = cloneRootViewTransitionContainer(root.containerInfo);
     root.gestureClone = rootClone;
+    // 根据新的 Fiber 树填充目标页面内容。
     recursivelyInsertClones(finishedWork, rootClone, null, CLONE_UPDATE);
   } else {
     root.gestureClone = null;
+    // 取消浏览器默认的整页 Root 过渡，并避免 View Transition 的全屏伪元素挡住用户点击。
     cancelRootViewTransitionName(root.containerInfo);
   }
 }

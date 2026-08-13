@@ -234,6 +234,7 @@ export function cancelScheduledGesture(
   }
 }
 
+// 停止当前的手势任务的提交，停止正在运行的视图过渡
 export function stopCommittedGesture(root: FiberRoot) {
   // The top was just committed. We can delete it from the queue
   // and stop its View Transition now.

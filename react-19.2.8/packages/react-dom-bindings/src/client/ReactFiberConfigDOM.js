@@ -1699,6 +1699,7 @@ export function cancelViewTransitionName(
   }
 }
 
+// 取消浏览器默认的整页 Root 过渡，并避免 View Transition 的全屏伪元素挡住用户点击。
 export function cancelRootViewTransitionName(rootContainer: Container): void {
   const documentElement: null | HTMLElement =
     rootContainer.nodeType === DOCUMENT_NODE
@@ -1722,8 +1723,10 @@ export function cancelRootViewTransitionName(rootContainer: Container): void {
     // $FlowFixMe[prop-missing]
     documentElement.style.viewTransitionName === ''
   ) {
+    // 取消真实页面 Root 的过渡名称
     // $FlowFixMe[prop-missing]
     documentElement.style.viewTransitionName = 'none';
+    // 隐藏默认 Root 动画组并禁止它接收点击
     documentElement.animate(
       {opacity: [0, 0], pointerEvents: ['none', 'none']},
       // $FlowFixMe[incompatible-type]
@@ -1740,6 +1743,7 @@ export function cancelRootViewTransitionName(rootContainer: Container): void {
     // on this one as that would apply to all running transitions. This lets animations
     // that are running to block clicks so that they don't end up incorrectly hitting
     // whatever is below the animation.
+    // 缩小整个 View Transition 覆盖层
     documentElement.animate(
       {width: [0, 0], height: [0, 0]},
       // $FlowFixMe[incompatible-call]
@@ -1865,6 +1869,7 @@ function moveOldFrameIntoViewport(keyframe: any): void {
   }
 }
 
+// 为手势过渡创建一个临时的 Root 容器，用来在不修改当前页面的情况下组装“目标页面”。
 export function cloneRootViewTransitionContainer(
   rootContainer: Container,
 ): Instance {
@@ -1919,6 +1924,7 @@ export function cloneRootViewTransitionContainer(
     // If the style is already absolute, we don't have to do anything because it'll appear
     // in the same place.
   } else {
+    // 递归向上找到最高层级的祖先
     // Otherwise we need to absolutely position the clone in the same location as the original.
     let positionedAncestor: HTMLElement = containerParent;
     while (
@@ -1943,6 +1949,7 @@ export function cloneRootViewTransitionContainer(
     const prevScale = containerInstanceStyle.scale;
     const prevRotate = containerInstanceStyle.rotate;
     const prevTransform = containerInstanceStyle.transform;
+    // 重置样式
     positionedAncestorStyle.translate = 'none';
     positionedAncestorStyle.scale = 'none';
     positionedAncestorStyle.rotate = 'none';
@@ -1954,7 +1961,7 @@ export function cloneRootViewTransitionContainer(
 
     const ancestorRect = positionedAncestor.getBoundingClientRect();
     const rect = containerInstance.getBoundingClientRect();
-
+    // 给克隆节点设置绝对定位和样式宽高 让克隆容器和原始容器尺寸一样
     const cloneStyle = clone.style;
     cloneStyle.position = 'absolute';
     cloneStyle.top = rect.top - ancestorRect.top + 'px';
@@ -1963,7 +1970,7 @@ export function cloneRootViewTransitionContainer(
     cloneStyle.height = rect.height + 'px';
     cloneStyle.margin = '0px';
     cloneStyle.boxSizing = 'border-box';
-
+    // 恢复样式
     positionedAncestorStyle.translate = prevAncestorTranslate;
     positionedAncestorStyle.scale = prevAncestorScale;
     positionedAncestorStyle.rotate = prevAncestorRotate;
@@ -1981,12 +1988,17 @@ export function cloneRootViewTransitionContainer(
 
   // Move out of the viewport so that it's still painted for the snapshot but is not visible
   // for the frame where the snapshot happens.
+  // 让浏览器把这个克隆容器作为 View Transition 的目标 Root。
   moveOutOfViewport(computedStyle, clone);
 
   // Insert the clone after the root container as a sibling. This may inject a body
   // as the next sibling of an existing body. document.body will still point to the
   // first one and any id selectors will still find the first one. That's why it's
   // important that it's after the existing node.
+  // 插入节点
+  // 暂时把克隆容器移出可视区域：
+  //   用户不会直接看到它。
+  //   浏览器仍然可以对它布局和截图。
   containerInstance.parentNode.insertBefore(
     clone,
     containerInstance.nextSibling,
@@ -2654,18 +2666,30 @@ function animateGesture(
   }
 }
 
+// 启动一次由用户滑动或滚动进度控制的页面过渡动画。
 export function startGestureTransition(
+  // 等待图片、样式等资源加载的状态。
   suspendedState: null | SuspendedState,
+  // createRoot 传入的真实 DOM 容器。
   rootContainer: Container,
+  // 控制动画进度的手势时间轴。
   timeline: GestureTimeline,
+  // 动画开始位置。
   rangeStart: number,
+  // 动画结束位置。
   rangeEnd: number,
+  // 本次 View Transition 的类型。
   transitionTypes: null | TransitionTypes,
+  // 切换到目标页面，提交 DOM 修改
   mutationCallback: () => void,
+  // DOM 修改后，设置并启动手势动画。
   animateCallback: () => void,
+  // 处理 View Transition 错误。
   errorCallback: mixed => void,
+  // 动画完成后的性能统计回调。
   finishedAnimation: () => void, // Profiling-only
 ): null | RunningViewTransition {
+  // 获得document对象
   const ownerDocument: Document =
     rootContainer.nodeType === DOCUMENT_NODE
       ? (rootContainer as any)
@@ -2674,61 +2698,88 @@ export function startGestureTransition(
     // Force layout before we start the Transition. This works around a bug in Safari
     // if one of the clones end up being a stylesheet that isn't loaded or uncached.
     // https://bugs.webkit.org/show_bug.cgi?id=290146
+    // 修复bug的调用
     forceLayout(ownerDocument);
     // $FlowFixMe[prop-missing]
+    // 开启视图过渡，使用mutationCallback修改dom，提交新视图
     const transition = ownerDocument.startViewTransition({
       update: mutationCallback,
+      // 自定义的视图过渡名称，想要执行哪些过渡
       types: transitionTypes,
     });
     // $FlowFixMe[prop-missing]
+    // 保存视图过渡对象
     ownerDocument.__reactViewTransition = transition;
     const customTimelineCleanup: Array<() => void> = []; // Cleanup Animations started in a CustomTimeline
     const viewTransitionAnimations: Array<Animation> = [];
+    // 浏览器完成新旧页面快照后执行：把浏览器自动创建的“按时间播放”动画，
+    // 替换为由用户滑动/滚动进度控制的手势动画。
     const readyCallback = () => {
+      // View Transition 的伪元素和动画都挂在 documentElement 上。
       const documentElement: Element = ownerDocument.documentElement as any;
       // Loop through all View Transition Animations.
       // $FlowFixMe[prop-missing]
       // $FlowFixMe[incompatible-type]
+      // getAnimations({subtree: true})：获取 documentElement 及其子树上的全部动画。
       const animations = documentElement.getAnimations({subtree: true});
       // First do a pass to collect all known group and new items so we can look
       // up if they exist later.
       const foundGroups: Set<string> = new Set();
+      // 保存存在 ::view-transition-new(name) 的名称。
       const foundNews: Set<string> = new Set();
       // Collect the longest duration of any view-transition animation including delay.
+      // 保存所有 View Transition 动画中最长的“延迟 + 时长”。
       let longestDuration = 0;
+      // 第一遍遍历：收集过渡名称，并计算原动画的最长总时长。
       for (let i = 0; i < animations.length; i++) {
+        // Animation.effect：动画效果对象，保存动画目标、关键帧和时间配置。
         const effect: KeyframeEffect = animations[i].effect as any;
         // $FlowFixMe[prop-missing]
+        // KeyframeEffect.pseudoElement：动画作用的 CSS 伪元素名称；普通元素动画通常为空。
         const pseudoElement: ?string = effect.pseudoElement;
         if (pseudoElement == null) {
+          // 普通 DOM 动画，不属于 View Transition，忽略。
         } else if (
           pseudoElement.startsWith('::view-transition') &&
+          // KeyframeEffect.target：动画实际作用的 DOM 元素。
           effect.target === documentElement
         ) {
+          // 只处理当前 document 上的 View Transition 伪元素动画。
+          // getTiming()：获取动画的时长、延迟、播放方向等时间配置。
           const timing = effect.getTiming();
+          // timing.duration：动画自身的持续时间，单位通常是毫秒。
           const duration =
             // $FlowFixMe[prop-missing]
             typeof timing.duration === 'number' ? timing.duration : 0;
           // TODO: Consider interation count higher than 1.
           // $FlowFixMe[prop-missing]
           // $FlowFixMe[unsafe-addition]
+          // timing.delay：动画开始前需要等待的时间。
           const durationWithDelay = timing.delay + duration;
+          // 记录最长动画时间，后面用它把“毫秒”换算成“手势范围”。
           if (durationWithDelay > longestDuration) {
             longestDuration = durationWithDelay;
           }
           if (pseudoElement.startsWith('::view-transition-group')) {
+            // 记录存在 group(name) 动画的过渡名称。
             foundGroups.add(pseudoElement.slice(23));
           } else if (pseudoElement.startsWith('::view-transition-new')) {
             // TODO: This is not really a sufficient detection because if the new
             // pseudo element might exist but have animations disabled on it.
+            // 记录存在 new(name) 快照的过渡名称。
             foundNews.add(pseudoElement.slice(21));
           }
         }
       }
+      // 把原动画的时间比例换算成手势时间轴上的范围比例。
       const durationToRangeMultipler =
         (rangeEnd - rangeStart) / longestDuration;
+      // 第二遍遍历：取消原动画，再使用相同关键帧创建手势控制的动画。
       for (let i = 0; i < animations.length; i++) {
+        // animations[i] 是一个 Web Animations API 的 Animation 对象。
         const anim = animations[i];
+        // Animation.playState：当前播放状态，如 running、paused、finished、idle。
+        // 已经结束、暂停或取消的动画不需要转换。
         if (anim.playState !== 'running') {
           continue;
         }
@@ -2743,8 +2794,11 @@ export function startGestureTransition(
           // Ideally we could mutate the existing animation but unfortunately
           // the mutable APIs seem less tested and therefore are lacking or buggy.
           // Therefore we create a new animation instead.
+          // Animation.cancel()：立即取消动画，并清除它当前产生的动画效果。
           anim.cancel();
+          // 是否为浏览器自动生成、同时具有新旧快照的 group 动画。
           let isGeneratedGroupAnim = false;
+          // 是否为只有旧快照的退出动画。
           let isExitGroupAnim = false;
           if (pseudoElement.startsWith('::view-transition-group')) {
             const groupName = pseudoElement.slice(23);
@@ -2753,6 +2807,7 @@ export function startGestureTransition(
               // animation that started outside the viewport. We need to adjust this first frame
               // to be inside the viewport.
               // $FlowFixMe[prop-missing]
+              // Animation.animationName：该动画对应的 CSS animation-name。
               const animationName: ?string = anim.animationName;
               isGeneratedGroupAnim =
                 animationName != null &&
@@ -2769,10 +2824,12 @@ export function startGestureTransition(
           // Adjust the range based on how long the animation would've ran as time based.
           // Since we're running animations in reverse from how they normally would run,
           // therefore the timing is from the rangeEnd to the start.
+          // 再次读取当前动画的时间配置，用于换算它对应的手势区间。
           const timing = effect.getTiming();
           const duration =
             // $FlowFixMe[prop-missing]
             typeof timing.duration === 'number' ? timing.duration : 0;
+          // 按原动画的 duration 和 delay，计算它在手势范围内真正占用的区间。
           let adjustedRangeStart =
             // $FlowFixMe[unsafe-addition]
             // $FlowFixMe[prop-missing]
@@ -2783,15 +2840,19 @@ export function startGestureTransition(
             // $FlowFixMe[unsafe-arithmetic]
             timing.delay * durationToRangeMultipler;
           if (
+            // timing.direction：原动画的播放方向。
             timing.direction === 'reverse' ||
             timing.direction === 'alternate-reverse'
           ) {
+            // 原动画本身是反向播放，因此交换手势区间的起点和终点。
             // This animation was originally in reverse so we have to play it in flipped range.
             const temp = adjustedRangeStart;
             adjustedRangeStart = adjustedRangeEnd;
             adjustedRangeEnd = temp;
           }
+          // 使用原动画关键帧创建一个由 timeline 进度控制的新动画。
           animateGesture(
+            // getKeyframes()：获取浏览器计算后的动画关键帧。
             effect.getKeyframes(),
             // $FlowFixMe[incompatible-type]: Always documentElement atm.
             effect.target,
@@ -2807,6 +2868,8 @@ export function startGestureTransition(
           if (pseudoElement.startsWith('::view-transition-old')) {
             const groupName = pseudoElement.slice(21);
             if (!foundGroups.has(groupName) && !foundNews.has(groupName)) {
+              // 只有 old(name)，却没有对应的 group(name) 和 new(name)：
+              // 手动补一个 group 动画，修正退出元素的屏幕位置。
               foundGroups.add(groupName);
               // We haven't seen any group animation with this name. Since the old
               // state was outside the viewport we need to put it back. Since we
@@ -2843,22 +2906,29 @@ export function startGestureTransition(
       // we explicitly abort (or something forces the View Transition to cancel).
       // $FlowFixMe[incompatible-call]
       // $FlowFixMe[incompatible-type]
+      // Element.animate()：创建并立即播放一个 Web Animations API 动画。
       const blockingAnim = documentElement.animate([{}, {}], {
+        // 指定动画作用于 View Transition 的根伪元素。
         pseudoElement: '::view-transition',
         duration: 1,
       });
+      // Animation.pause()：暂停这个占位动画，避免浏览器提前结束过渡。
       blockingAnim.pause();
+      // 保存起来，过渡结束后统一取消。
       viewTransitionAnimations.push(blockingAnim);
+      // 通知 React：手势动画已经创建，可以执行动画阶段的恢复和收尾工作。
       animateCallback();
     };
     // In Chrome, "new" animations are not ready in the ready callback. We have to wait
     // until requestAnimationFrame before we can observe them through getAnimations().
     // However, in Safari, that would cause a flicker because we're applying them late.
     // TODO: Think of a feature detection for this instead.
+    // 等待时机实行动画的函数
     const readyForAnimations =
       navigator.userAgent.indexOf('Chrome') !== -1
         ? () => requestAnimationFrame(readyCallback)
         : readyCallback;
+    // 捕获错误
     const handleError = (error: mixed) => {
       // $FlowFixMe[prop-missing]
       if (ownerDocument.__reactViewTransition === transition) {
@@ -2875,28 +2945,35 @@ export function startGestureTransition(
         // If the error happened in the snapshot phase before the update callback
         // was invoked, then we need to first finish the mutation and layout phases.
         // If they're already invoked it's still safe to call them due the status check.
+        // 保底直接修改dom
         mutationCallback();
         // Skip readyCallback() and go straight to animateCallbck() since we're not animating.
         // animateCallback() is still required to restore states.
+        // 使用手势动画回调
         animateCallback();
         if (enableProfilerTimer) {
           finishedAnimation();
         }
       }
     };
+    // 过渡样式就绪的回调函数设置
     transition.ready.then(readyForAnimations, handleError);
+    // 新页面ready的回调函数设置
     transition.finished.finally(() => {
       for (let i = 0; i < viewTransitionAnimations.length; i++) {
         // In Safari, we need to manually cancel all manually started animations
         // or it'll block or interfer with future transitions.
         // We can't use getAnimations() due to #35336 so we collect them in an array.
+        // 清理取消视图过渡
         viewTransitionAnimations[i].cancel();
       }
       for (let i = 0; i < customTimelineCleanup.length; i++) {
         const cleanup = customTimelineCleanup[i];
+        // 执行readyCallback收集的清理函数
         cleanup();
       }
       // $FlowFixMe[prop-missing]
+      // 清理过渡对象
       if (ownerDocument.__reactViewTransition === transition) {
         // $FlowFixMe[prop-missing]
         ownerDocument.__reactViewTransition = null;
@@ -2917,6 +2994,7 @@ export function startGestureTransition(
     // Transitions v2 otherwise we fallback to not animating to ensure that
     // we're not animating with the wrong animation mapped.
     // Run through the sequence to put state back into a consistent state.
+    // 保底执行修改dom
     mutationCallback();
     animateCallback();
     if (enableProfilerTimer) {
